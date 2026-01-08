@@ -1,0 +1,89 @@
+# Configuration pour analyse réelle NAS100
+# Utilise tes données MT5 avec Order Blocks + BOS/CHOCH
+
+data:
+  source: mt5
+  symbol: NAS100
+  main_timeframe: M3
+  n_bars: 5000
+  start_date: '2025-08-01'
+  end_date: '2025-12-31'
+  timeframes:
+    - M3
+
+indicators:
+  # ========================================
+  # Order Blocks - Zones clés institutionnelles
+  # ========================================
+  - name: order_blocks
+    module: order_blocks.py
+    timeframe: M3
+    panel: main
+    params:
+      swing_length: 5          # Période pour détecter swings
+      min_body_size: 2.0        # Taille min du corps (en points)
+      imbalance_bars: 3         # Nombre de bougies pour imbalance
+      max_zones: 15             # Zones max à afficher
+      skip_impulse_candles: 2   # Ignorer N bougies après création
+    style:
+      # Pas de style ici - couleurs décidées dans l'indicateur
+  
+  # ========================================
+  # BOS/CHOCH - Cassures de structure
+  # ========================================
+  - name: bos_choch
+    module: bos_choch.py
+    timeframe: M3
+    panel: main
+    params:
+      swing_period: 12           # Période pour swings (plus petit = plus réactif)
+      break_validation: close    # 'wick' = validation par mèche
+                                # 'close' = validation par close (plus conservateur)
+      wick_count_required: 3    # ← 3 mèches = BOS, 1 mèche = prise liquidité
+      detect_bos: true          # Détecter BOS
+      detect_choch: false       # Détecter CHOCH (à implémenter)
+      detect_mss: false         # Détecter MSS (à implémenter)
+
+  # Equal Highs/Lows - Liquidité
+  - name: equal_highs_lows
+    module: equal_highs_lows.py
+    timeframe: M3
+    panel: main
+    params:
+      tolerance: 0.05           # 0.001-0.1 (plus bas = plus strict)
+      use_rsi_filter: false      # Filtrer par RSI --- PAS UTILE DANS NOTRE SITUATION
+      rsi_threshold: 5          # Écart RSI de 50
+      max_zone_age: 5000        # Âge max en bars
+      sweep_type: wick          # 'body' ou 'wick'
+      allow_rejection: false    # 2 closes pour mitigation
+
+output:
+  file: output/nas100_analysis.html
+  title: "NAS100 M3 - Smart Money Analysis"
+  show_debug: false
+
+
+
+# ========================================
+# NOTES D'UTILISATION
+# ========================================
+# 
+# Order Blocks:
+# - Rectangles VERTS = Bullish Order Blocks
+# - Rectangles BORDEAUX = Bearish Order Blocks
+# - Label (X) = nombre de touches (mitigation)
+# - Transparence augmente avec mitigation
+#
+# BOS/CHOCH:
+# - Lignes VERTES horizontales = BOS Bullish (cassure de high)
+# - Lignes BORDEAUX horizontales = BOS Bearish (cassure de low)
+# - Du swing → point de cassure
+#
+# Validation:
+# - 'wick' : Cassure dès que la mèche touche
+# - 'close' : Cassure seulement si close dépasse
+#
+# Paramètres Suggérés:
+# - Scalping M3: swing_period=3-5, validation=wick
+# - Swing M15: swing_period=10-15, validation=close
+# - Day Trading M5: swing_period=5-8, validation=wick

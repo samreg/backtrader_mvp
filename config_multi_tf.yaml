@@ -1,0 +1,92 @@
+# ========================================
+# CONFIGURATION MULTI-TIMEFRAME
+# Analyse sur plusieurs timeframes pour confluence
+# ========================================
+
+data:
+  source: mt5
+  symbol: NAS100
+  main_timeframe: M3
+  start_date: '2024-12-15'
+  end_date: '2024-12-31'
+  timeframes:
+    - M3
+    - M15
+    - H1
+
+indicators:
+  # ========================================
+  # M3 - Court terme
+  # ========================================
+  - name: order_blocks_m3
+    module: order_blocks.py
+    timeframe: M3
+    panel: main
+    params:
+      swing_length: 8
+      min_body_size: 2.0
+      max_zones: 12
+  
+  - name: bos_choch_m3
+    module: bos_choch.py
+    timeframe: M3
+    panel: main
+    params:
+      swing_period: 5
+      break_validation: wick
+  
+  # ========================================
+  # M15 - Moyen terme (confluence)
+  # ========================================
+  - name: order_blocks_m15
+    module: order_blocks.py
+    timeframe: M15
+    panel: main
+    params:
+      swing_length: 12
+      min_body_size: 3.0
+      max_zones: 15
+  
+  - name: bos_choch_m15
+    module: bos_choch.py
+    timeframe: M15
+    panel: main
+    params:
+      swing_period: 8
+      break_validation: close
+  
+  # ========================================
+  # H1 - Long terme (direction principale)
+  # ========================================
+  - name: order_blocks_h1
+    module: order_blocks.py
+    timeframe: H1
+    panel: main
+    params:
+      swing_length: 20
+      min_body_size: 5.0
+      max_zones: 10
+  
+  - name: bos_choch_h1
+    module: bos_choch.py
+    timeframe: H1
+    panel: main
+    params:
+      swing_period: 15
+      break_validation: close
+
+output:
+  file: output/multi_timeframe.html
+  title: "Multi-TF Analysis NAS100"
+
+# NOTES:
+# - Rechercher CONFLUENCE entre timeframes
+# - H1 = Direction principale (tendance)
+# - M15 = Zones de confluence
+# - M3 = Entrées précises
+# 
+# STRATÉGIE:
+# 1. H1 : Identifier direction (BOS bullish/bearish)
+# 2. M15 : Trouver Order Block dans direction H1
+# 3. M3 : Attendre BOS M3 + Order Block M15 pour entrer
+# 4. Confluence = Force du setup

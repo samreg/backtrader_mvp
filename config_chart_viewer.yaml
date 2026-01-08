@@ -1,0 +1,83 @@
+# ============================================================
+# CHART VIEWER CONFIGURATION
+# ============================================================
+
+# === DATA SOURCE ===
+data:
+  source: mt5
+  symbol: "EURUSD"
+  main_timeframe: "M5"
+  n_bars: 2000
+
+# === INDICATORS ===
+indicators:
+  # EMA on main chart
+  - name: ema_50
+    module: ema.py
+    timeframe: M5
+    panel: main
+    params:
+      period: 50
+    style:
+      color: '#2196F3'
+      linewidth: 2
+  
+  # Another EMA
+  - name: ema_200
+    module: ema.py
+    timeframe: M5
+    panel: main
+    params:
+      period: 200
+    style:
+      color: '#9C27B0'
+      linewidth: 2
+  
+  # Order blocks from H1
+  - name: order_blocks_h1
+    module: order_blocks.py
+    timeframe: H1
+    panel: main
+    params:
+      min_body_size: 0.0005
+      lookback: 100
+      max_zones: 10
+  
+  # Order blocks from H4
+  - name: order_blocks_h4
+    module: order_blocks.py
+    timeframe: H4
+    panel: main
+    params:
+      min_body_size: 0.001
+      lookback: 50
+      max_zones: 5
+  
+  # BOS/CHOCH on M5
+  - name: bos_choch_m5
+    module: bos_choch.py
+    timeframe: M5
+    panel: main
+    params:
+      swing_length: 10
+      min_break_pct: 0.001
+  
+  # Zone aggregator (bottom panel)
+  - name: zone_aggregator
+    module: zone_aggregator.py
+    timeframe: M5
+    panel: bottom_1
+    params:
+      sources:
+        - indicator: order_blocks_h1
+          type: order_block
+        - indicator: order_blocks_h4
+          type: order_block
+    style:
+      color: '#FF9800'
+      linewidth: 2
+
+# === DISPLAY OPTIONS ===
+display:
+  show_inactive_zones: false  # Hide mitigated/expired zones
+  show_segments: true

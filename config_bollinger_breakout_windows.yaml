@@ -1,0 +1,115 @@
+# ============================================================
+# CONFIGURATION STRATÉGIE BOLLINGER MEAN REVERSION
+# Entry au retour dans les bandes
+# ============================================================
+
+# === STRATÉGIE ===
+strategy_name: "BollingerBreakoutStrategy"
+strategy_module: "strategy_bollinger_breakout"
+
+# === DONNÉES ===
+data:
+  symbol: "NAS100"
+  timeframe: "M3"
+  months: 6
+  file: "data/NAS100_M3.csv"
+  use_specific_csv_file: false
+
+# === EXÉCUTION ===
+execution:
+  auto_download: true
+  auto_html: true
+  auto_open_browser: true
+  refresh_data_days: 1
+
+# === CAPITAL & RISQUE ===
+capital: 10000
+risk_per_trade: 0.01
+cost_rate: 0.0001
+pip_value: 0.1
+
+# === TRADING WINDOWS ===
+# Filtre temporel pour restreindre les entrées à certains créneaux
+trading_windows:
+  enabled: true               # ACTIVÉ - Trading sur créneaux spécifiques
+  timezone: "Europe/Paris"
+  windows:
+    - "Monday[13:00-16:00]"     # Lundi après-midi
+    - "Monday[15:30-18:00]"     # Lundi session US
+    - "Tuesday[09:00-11:30]"    # Mardi matin EU
+    - "Tuesday[15:00-17:00]"    # Mardi overlap EU/US
+    - "Thursday[02:00-05:00]"   # Jeudi session asiatique
+    - "Thursday[15:30-18:00]"   # Jeudi session US
+    - "Friday[08:00-12:00]"     # Vendredi matin uniquement
+
+# === PARAMÈTRES STRATÉGIE ===
+# Bollinger Bands
+bb_period: 20
+bb_std: 1.5  # 1.5 pour mean reversion (plus serré = plus de signaux)
+
+# RSI (Machine à états pour confirmation)
+rsi_period: 14
+rsi_oversold: 20        # < 20 → RSI_buy (LONG possible)
+rsi_oversold_exit: 30   # >= 30 → RSI_middle (sortie RSI_buy)
+rsi_overbought: 80      # > 80 → RSI_sell (SHORT possible)
+rsi_overbought_exit: 70 # <= 70 → RSI_middle (sortie RSI_sell)
+
+# Stop Loss (Swing high/low)
+sl_lookback: 3       # Bougies pour trouver swing
+sl_offset_pips: 10   # Pips au-delà du swing
+
+# Take Profits DYNAMIQUES (Bandes BB)
+tp1_ratio: 0.5  # 50% à TP1 (BB Middle)
+tp2_ratio: 0.5  # 50% à TP2 (BB Opposite)
+
+# Break-even
+enable_breakeven: true
+breakeven_offset: 5  # Décalage en PIPS (SL déplacé à entry + X pips après TP1)
+
+# Filtres SL
+min_sl_distance_pips: 15
+max_sl_distance_pips: 400
+
+# === NOTES ===
+# Stratégie Bollinger Bands Mean Reversion + RSI State Machine
+# 
+# Principe: Acheter au retour dans les bandes AVEC confirmation RSI
+#
+# === MACHINE À ÉTATS RSI ===
+# État RSI_middle (neutre):
+#   - Si RSI < 20 → passe à RSI_buy
+#   - Si RSI > 80 → passe à RSI_sell
+#
+# État RSI_buy (zone achat):
+#   - Reste RSI_buy tant que RSI < 30
+#   - Si RSI >= 30 → retourne à RSI_middle
+#
+# État RSI_sell (zone vente):
+#   - Reste RSI_sell tant que RSI > 70
+#   - Si RSI <= 70 → retourne à RSI_middle
+#
+# === SIGNAUX ===
+# LONG:
+# 1. Attendre: Prix < BB Lower (sortie en bas)
+# 2. Attendre: RSI < 20 (état passe à RSI_buy)
+# 3. Entry: Prix re-croise BB Lower ↑ ET État = RSI_buy
+# 4. TP1: BB Middle → 50% + BE
+# 5. TP2: BB Upper → 50%
+# 6. SL: Swing low - offset
+#
+# SHORT:
+# 1. Attendre: Prix > BB Upper (sortie en haut)
+# 2. Attendre: RSI > 80 (état passe à RSI_sell)
+# 3. Entry: Prix re-croise BB Upper ↓ ET État = RSI_sell
+# 4. TP1: BB Middle → 50% + BE
+# 5. TP2: BB Lower → 50%
+# 6. SL: Swing high + offset
+#
+# AVANTAGES MACHINE À ÉTATS:
+# - Évite flip-flop rapides entre buy/sell
+# - État persiste dans zone de transition (30-70)
+# - Plus robuste que simple seuil
+# - std=1.5 : Bandes serrées = plus de signaux
+
+
+
