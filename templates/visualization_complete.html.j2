@@ -623,53 +623,86 @@
 
     // --------- Navigation / view centering ----------
     function goToTrade(index) {
-        if (!chart || !candlestickSeries) return;
+      if (!chart || !candlestickSeries) return;
       if (!tradesData.length) return;
 
       const trade = tradesData[index];
       if (!trade) return;
 
+      // Reset autoscale
+      candlestickSeries.applyOptions({ autoscaleInfoProvider: undefined });
+
       const tradeBoxes = rectanglesData.filter(r => String(r.trade_id) === String(trade.id));
 
-      // Calculate trade duration from boxes
-      let tradeDuration = 3600; // Default 1h
+      // ==================== CENTRAGE HORIZONTAL ====================
+
+      // Calculate trade time range
+      let tradeStartTime = trade.time;
+      let tradeEndTime = trade.time + 3600; // Default 1h
+
       if (tradeBoxes.length) {
-        const maxEndTime = Math.max(...tradeBoxes.map(b => safeNumber(b.time2, trade.time)));
-        tradeDuration = Math.max(60, maxEndTime - trade.time);
+        tradeStartTime = Math.min(...tradeBoxes.map(b => safeNumber(b.time1, trade.time)));
+        tradeEndTime = Math.max(...tradeBoxes.map(b => safeNumber(b.time2, trade.time)));
       }
 
-      // CORRECTION: Plus de contexte visible (20x au lieu de 5x)
-      const totalDuration = tradeDuration * 20;
-      const margin = (totalDuration - tradeDuration) / 2;
-      const from = trade.time - margin;
-      const to = trade.time + tradeDuration + margin;
+      const tradeDuration = tradeEndTime - tradeStartTime;
+
+      // Calculate zoom based on target width in pixels
+      const chartWidth = overlay.width;
+      const targetTradeWidth = 100; // Largeur souhaitée du trade en pixels
+
+      const totalDurationToShow = (tradeDuration / targetTradeWidth) * chartWidth;
+
+      // Center the trade horizontally
+      const tradeCenter = tradeStartTime + (tradeDuration / 2);
+      const halfDuration = totalDurationToShow / 2;
+
+      const from = tradeCenter - halfDuration;
+      const to = tradeCenter + halfDuration;
 
       chart.timeScale().setVisibleRange({ from, to });
 
-      // Price range calculation
+      // ==================== CENTRAGE VERTICAL ====================
+
+      // Calculate trade price range from boxes
       let minPrice = trade.price;
       let maxPrice = trade.price;
+
       tradeBoxes.forEach((b) => {
         minPrice = Math.min(minPrice, safeNumber(b.price1, minPrice), safeNumber(b.price2, minPrice));
         maxPrice = Math.max(maxPrice, safeNumber(b.price1, maxPrice), safeNumber(b.price2, maxPrice));
       });
 
-      const boxRange = Math.max(1e-9, maxPrice - minPrice);
+      const tradePriceRange = maxPrice - minPrice;
 
-      // CORRECTION: Plus de marge verticale (2.5x au lieu de 1.8x)
-      const halfRange = boxRange * 2.5;
-      const minVisible = trade.price - halfRange;
-      const maxVisible = trade.price + halfRange;
+      // Calculate required price range to make trade at least 30px tall
+      const chartHeight = overlay.height;
+      const targetTradeHeight = 70; // Hauteur minimale souhaitée en pixels
 
-      // Force custom autoscale
+      // Calculate price per pixel at current scale
+      // We want: tradePriceRange / targetTradeHeight = totalPriceRange / chartHeight
+      const minPriceRangeToShow = (tradePriceRange / targetTradeHeight) * chartHeight;
+
+      // Center the trade vertically
+      const tradePriceCenter = (minPrice + maxPrice) / 2;
+      const halfPriceRange = Math.max(minPriceRangeToShow, tradePriceRange * 2) / 2; // Au moins 2x la hauteur du trade
+
+      const minVisible = tradePriceCenter - halfPriceRange;
+      const maxVisible = tradePriceCenter + halfPriceRange;
+
+      // Apply custom autoscale for vertical centering
       candlestickSeries.applyOptions({
         autoscaleInfoProvider: () => ({
-          priceRange: { minValue: minVisible, maxValue: maxVisible },
-          margins: { above: 0.1, below: 0.1 }, // CORRECTION: plus de marge (10% au lieu de 5%)
+          priceRange: {
+            minValue: minVisible,
+            maxValue: maxVisible
+          },
+          margins: { above: 0.05, below: 0.05 },
         })
       });
 
-      // Update trade info panel
+      // ==================== UPDATE TRADE INFO ====================
+
       document.getElementById('tradeInfo').style.display = 'block';
       document.getElementById('tradeId').textContent = trade.id;
       document.getElementById('tradeDirection').textContent = trade.direction;
@@ -685,7 +718,7 @@
       document.getElementById('tradeTP1').textContent = tp1Box ? safeNumber(trade.direction === 'LONG' ? tp1Box.price2 : tp1Box.price1).toFixed(2) : 'N/A';
       document.getElementById('tradeTP2').textContent = tp2Box ? safeNumber(trade.direction === 'LONG' ? tp2Box.price2 : tp2Box.price1).toFixed(2) : 'N/A';
 
-      // RR (uses SL_INITIAL if present)
+      // RR calculation
       const slInitial = tradeBoxes.find(b => b.type === 'SL_INITIAL');
       const slRR = slInitial || slBox;
       let rrTxt = 'N/A';
@@ -711,8 +744,7 @@
       }
       document.getElementById('tradeRR').textContent = rrTxt;
 
-      // redraw after view change
-      setTimeout(drawRectangles, 60);
+      setTimeout(drawRectangles, 100);
     }
 
     function previousTrade() {
