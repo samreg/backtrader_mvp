@@ -36,10 +36,10 @@ def load_candles(config: dict) -> pd.DataFrame:
     df = pd.read_csv(data_file, parse_dates=['datetime'])
 
     # Handle timezone
-    if df['datetime'].dt.tz is None:
-        df['datetime'] = df['datetime'].dt.tz_localize('Europe/Paris')
-    else:
-        df['datetime'] = df['datetime'].dt.tz_convert('Europe/Paris')
+    # NE PAS localiser : garder naive pour que .timestamp() traite comme heure locale
+    # (Les CSV sont déjà en heure locale Paris)
+    if df['datetime'].dt.tz is not None:
+        df['datetime'] = df['datetime'].dt.tz_localize(None)
 
     return df
 

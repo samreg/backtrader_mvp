@@ -212,11 +212,17 @@ class Indicator(IndicatorBase):
             else:
                 fill_color = 'rgba(255, 167, 38, 0.15)'
                 border_color = '#FFA726'
-            
+
             # Parse metadata if exists
+            # CORRECTION: Stocker les timestamps originaux pour éviter le décalage
+            dt_start = pd.to_datetime(box['start_time'])
+            dt_end = pd.to_datetime(box['end_time']) if pd.notna(box['end_time']) else None
+
             metadata = {
                 'box_type': box_type,
-                'trade_id': int(box['trade_id'])
+                'trade_id': int(box['trade_id']),
+                'original_start_time': int(dt_start.timestamp()),  # Garder naive = heure locale
+                'original_end_time': int(dt_end.timestamp()) if dt_end is not None else None
             }
             
             if 'metadata' in box and pd.notna(box['metadata']):
@@ -272,9 +278,13 @@ class Indicator(IndicatorBase):
             entry = entry_events.iloc[0]
             
             # Build navigation entry
+            # CORRECTION: Garder naive (les CSV sont déjà en heure locale)
+            dt = pd.to_datetime(entry['datetime'])
+            # Ne PAS tz_localize car .timestamp() traite déjà comme heure locale système
+
             nav_entry = {
                 'id': int(trade_id),
-                'time': int(pd.to_datetime(entry['datetime']).timestamp()),
+                'time': int(dt.timestamp()),  # Naive = heure locale
                 'direction': entry['direction'],
                 'price': float(entry['price'])
             }
