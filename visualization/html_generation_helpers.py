@@ -13,42 +13,34 @@ from visualization.primitive_serializer import PrimitiveSerializer
 from data.mt5_loader import ensure_data_file
 
 
-
 def load_candles(config: dict) -> pd.DataFrame:
     """
-    Load candles DataFrame from data file
-    
+    Load candles DataFrame from data file or MT5
+
     Args:
         config: YAML config dict
-    
+
     Returns:
         DataFrame with candles
     """
-    from data.mt5_loader import get_data_filename
-    
-    # Determine data file
-    symbol = config['data']['symbol']
-    timeframe = config['data']['timeframe']
-    use_specific = config['data'].get('use_specific_csv_file', False)
-    
-    if use_specific:
-        data_file = config['data']['file']
-    else:
-        data_file = f"data/{get_data_filename(symbol, timeframe)}"
-    
-    print(f"📂 Loading candles: {data_file}")
-    
-    if not Path(data_file).exists():
-        raise FileNotFoundError(f"Data file not found: {data_file}")
-    
+    from data.mt5_loader import ensure_data_file
+
+    # ensure_data_file gère TOUT:
+    # - Si use_specific_csv_file=True  → utilise le fichier spécifique
+    # - Si use_specific_csv_file=False → télécharge depuis MT5 si besoin
+    data_file = ensure_data_file(config)
+
+    print(f"✅ Chargement: {data_file}")
+
+    # Charger le CSV
     df = pd.read_csv(data_file, parse_dates=['datetime'])
-    
+
     # Handle timezone
     if df['datetime'].dt.tz is None:
         df['datetime'] = df['datetime'].dt.tz_localize('Europe/Paris')
     else:
         df['datetime'] = df['datetime'].dt.tz_convert('Europe/Paris')
-    
+
     return df
 
 
