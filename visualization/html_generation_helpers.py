@@ -36,10 +36,14 @@ def load_candles(config: dict) -> pd.DataFrame:
     df = pd.read_csv(data_file, parse_dates=['datetime'])
 
     # Handle timezone
-    # NE PAS localiser : garder naive pour que .timestamp() traite comme heure locale
-    # (Les CSV sont déjà en heure locale Paris)
-    if df['datetime'].dt.tz is not None:
-        df['datetime'] = df['datetime'].dt.tz_localize(None)
+    # CORRECTION: Les CSV MT5 sont en UTC, convertir en heure locale Paris
+    if df['datetime'].dt.tz is None:
+        df['datetime'] = df['datetime'].dt.tz_localize('UTC').dt.tz_convert('Europe/Paris')
+    else:
+        df['datetime'] = df['datetime'].dt.tz_convert('Europe/Paris')
+
+    # Enlever le timezone pour garder naive en heure Paris
+    df['datetime'] = df['datetime'].dt.tz_localize(None)
 
     return df
 
