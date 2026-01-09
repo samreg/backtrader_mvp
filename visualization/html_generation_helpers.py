@@ -47,24 +47,29 @@ def load_candles(config: dict) -> pd.DataFrame:
 def build_candles_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
     """
     Convert DataFrame to Lightweight Charts candles format
-    
-    Args:
-        df: Candles DataFrame
-    
-    Returns:
-        List of candle dicts
     """
+    import pytz
+    paris_tz = pytz.timezone('Europe/Paris')
+
     candles_data = []
-    
+
     for _, row in df.iterrows():
+        dt = row['datetime']
+
+        # CORRECTION: S'assurer que le datetime est en timezone Paris
+        if dt.tz is None:
+            dt = paris_tz.localize(dt)
+        elif dt.tz != paris_tz:
+            dt = dt.tz_convert(paris_tz)
+
         candles_data.append({
-            'time': int(row['datetime'].timestamp()),
+            'time': int(dt.timestamp()),
             'open': float(row['open']),
             'high': float(row['high']),
             'low': float(row['low']),
             'close': float(row['close'])
         })
-    
+
     return candles_data
 
 

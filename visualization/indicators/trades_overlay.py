@@ -47,7 +47,14 @@ class Indicator(IndicatorBase):
             return result
         
         # Load trades
+        # Load trades
         trades = pd.read_csv(self.trades_file, parse_dates=['datetime'])
+
+        # CORRECTION: S'assurer que les datetime sont bien en timezone Paris
+        import pytz
+        paris_tz = pytz.timezone('Europe/Paris')
+        if trades['datetime'].dt.tz is None:
+            trades['datetime'] = trades['datetime'].dt.tz_localize(paris_tz)
         
         # Build time → index mapping
         time_to_index = self._build_time_index_map(candles)
@@ -214,15 +221,34 @@ class Indicator(IndicatorBase):
                 border_color = '#FFA726'
 
             # Parse metadata if exists
-            # CORRECTION: Stocker les timestamps originaux pour éviter le décalage
+            # Ligne ~200 (dans _add_boxes)
             dt_start = pd.to_datetime(box['start_time'])
             dt_end = pd.to_datetime(box['end_time']) if pd.notna(box['end_time']) else None
+
+            # CORRECTION FINALE: Le CSV est en heure locale, on doit soustraire le décalage UTC
+            # Pour que JavaScript l'affiche correctement
+            import pytz
+            paris_tz = pytz.timezone('Europe/Paris')
+
+            if dt_start.tz is None:
+                # Localiser en Paris pour avoir le bon offset UTC
+                dt_start_paris = paris_tz.localize(dt_start)
+            else:
+                dt_start_paris = dt_start
+
+            if dt_end is not None:
+                if dt_end.tz is None:
+                    dt_end_paris = paris_tz.localize(dt_end)
+                else:
+                    dt_end_paris = dt_end
+            else:
+                dt_end_paris = None
 
             metadata = {
                 'box_type': box_type,
                 'trade_id': int(box['trade_id']),
-                'original_start_time': int(dt_start.timestamp()),  # Garder naive = heure locale
-                'original_end_time': int(dt_end.timestamp()) if dt_end is not None else None
+                'original_start_time': int(dt_start_paris.timestamp()),
+                'original_end_time': int(dt_end_paris.timestamp()) if dt_end_paris is not None else None
             }
             
             if 'metadata' in box and pd.notna(box['metadata']):
@@ -278,13 +304,10 @@ class Indicator(IndicatorBase):
             entry = entry_events.iloc[0]
             
             # Build navigation entry
-            # CORRECTION: Garder naive (les CSV sont déjà en heure locale)
-            dt = pd.to_datetime(entry['datetime'])
-            # Ne PAS tz_localize car .timestamp() traite déjà comme heure locale système
-
+            # Le datetime est déjà localisé en Paris lors du chargement
             nav_entry = {
                 'id': int(trade_id),
-                'time': int(dt.timestamp()),  # Naive = heure locale
+                'time': int(entry['datetime'].timestamp()),
                 'direction': entry['direction'],
                 'price': float(entry['price'])
             }
