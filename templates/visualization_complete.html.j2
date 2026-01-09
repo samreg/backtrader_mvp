@@ -708,18 +708,10 @@
       document.getElementById('tradeDirection').textContent = trade.direction;
       document.getElementById('tradeDirection').style.color = trade.direction === 'LONG' ? '#26a69a' : '#ef5350';
       document.getElementById('tradeEntry').textContent = safeNumber(trade.price).toFixed(2);
+      // CORRECTION: Afficher en UTC comme sur le chart
+      const date = new Date(trade.time * 1000);
+      document.getElementById('tradeTime').textContent = date.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
 
-      // CORRECTION: Afficher l'heure en timezone locale (pas UTC)
-
-        document.getElementById('tradeTime').textContent = new Date(trade.time * 1000).toLocaleString('fr-FR', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-        });
 
       const slBox = tradeBoxes.find(b => b.type === 'SL');
       const tp1Box = tradeBoxes.find(b => b.type === 'TP1');

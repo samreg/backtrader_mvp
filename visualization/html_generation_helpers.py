@@ -36,45 +36,28 @@ def load_candles(config: dict) -> pd.DataFrame:
     df = pd.read_csv(data_file, parse_dates=['datetime'])
 
     # Handle timezone
-    # CORRECTION: Les CSV MT5 sont en UTC, convertir en heure locale Paris
-    if df['datetime'].dt.tz is None:
-        df['datetime'] = df['datetime'].dt.tz_localize('UTC').dt.tz_convert('Europe/Paris')
-    else:
-        df['datetime'] = df['datetime'].dt.tz_convert('Europe/Paris')
-
-    # Enlever le timezone pour garder naive en heure Paris
-    df['datetime'] = df['datetime'].dt.tz_localize(None)
+    # CORRECTION: Garder tout en UTC (pas de conversion)
+    if df['datetime'].dt.tz is not None:
+        # Si déjà tz-aware, enlever le timezone mais garder les valeurs UTC
+        df['datetime'] = df['datetime'].dt.tz_localize(None)
+    # Les CSV MT5 sont déjà en UTC naive, parfait
 
     return df
 
 
 def build_candles_json(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    """
-    Convert DataFrame to Lightweight Charts candles format
-    """
-    import pytz
-    paris_tz = pytz.timezone('Europe/Paris')
-
     candles_data = []
-
     for _, row in df.iterrows():
-        dt = row['datetime']
-
-        # CORRECTION: S'assurer que le datetime est en timezone Paris
-        if dt.tz is None:
-            dt = paris_tz.localize(dt)
-        elif dt.tz != paris_tz:
-            dt = dt.tz_convert(paris_tz)
-
         candles_data.append({
-            'time': int(dt.timestamp()),
+            'time': int(row['datetime'].timestamp()),
             'open': float(row['open']),
             'high': float(row['high']),
             'low': float(row['low']),
             'close': float(row['close'])
         })
-
     return candles_data
+
+
 
 
 def get_visualization_indicators(config: dict) -> list:

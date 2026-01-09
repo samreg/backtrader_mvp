@@ -45,20 +45,10 @@ class Indicator(IndicatorBase):
         if not Path(self.trades_file).exists():
             print(f"⚠️  Trades file not found: {self.trades_file}")
             return result
-        
-        # Load trades
+
         # Load trades
         trades = pd.read_csv(self.trades_file, parse_dates=['datetime'])
-
-        # CORRECTION: S'assurer que les datetime sont bien en timezone Paris
-        import pytz
-        # Load trades
-        trades = pd.read_csv(self.trades_file, parse_dates=['datetime'])
-
-        # CORRECTION: Les CSV sont en UTC, convertir en heure locale Paris
-        if trades['datetime'].dt.tz is None:
-            trades['datetime'] = trades['datetime'].dt.tz_localize('UTC').dt.tz_convert('Europe/Paris')
-        trades['datetime'] = trades['datetime'].dt.tz_localize(None)
+        # CORRECTION: Garder UTC naive (pas de conversion)
         
         # Build time → index mapping
         time_to_index = self._build_time_index_map(candles)
@@ -194,15 +184,7 @@ class Indicator(IndicatorBase):
             time_to_index: Time mapping
         """
         boxes = pd.read_csv(self.boxes_file, parse_dates=['start_time', 'end_time'])
-
-        # CORRECTION: Les CSV sont en UTC, convertir en heure locale Paris
-        if boxes['start_time'].dt.tz is None:
-            boxes['start_time'] = boxes['start_time'].dt.tz_localize('UTC').dt.tz_convert('Europe/Paris')
-        boxes['start_time'] = boxes['start_time'].dt.tz_localize(None)
-
-        if boxes['end_time'].dt.tz is None:
-            boxes['end_time'] = boxes['end_time'].dt.tz_localize('UTC').dt.tz_convert('Europe/Paris')
-        boxes['end_time'] = boxes['end_time'].dt.tz_localize(None)
+        # CORRECTION: Garder UTC naive (pas de conversion)
         
         for idx, box in boxes.iterrows():
             start_idx = self._find_closest_index(box['start_time'], time_to_index)
@@ -234,7 +216,7 @@ class Indicator(IndicatorBase):
                 border_color = '#FFA726'
 
             # Parse metadata if exists
-            dt_start = pd.to_datetime(box['start_time'])  # Déjà converti en Paris naive
+            dt_start = pd.to_datetime(box['start_time'])
             dt_end = pd.to_datetime(box['end_time']) if pd.notna(box['end_time']) else None
 
             metadata = {
@@ -295,11 +277,10 @@ class Indicator(IndicatorBase):
                 continue
             
             entry = entry_events.iloc[0]
-            
-            # Build navigation entry
+
             nav_entry = {
                 'id': int(trade_id),
-                'time': int(entry['datetime'].timestamp()),  # Déjà converti en Paris naive
+                'time': int(entry['datetime'].timestamp()),
                 'direction': entry['direction'],
                 'price': float(entry['price'])
             }
