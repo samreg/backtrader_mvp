@@ -120,22 +120,24 @@ class PrimitiveSerializer:
             # Skip if indices out of bounds
             if prim.time_start_index >= len(self.candles_data):
                 continue
-            
+
             # Build rectangle dict
+            # CORRECTION: Utiliser les timestamps originaux des metadata (pas ceux des bougies)
             rect = {
                 'type': prim.metadata.get('box_type', 'UNKNOWN'),
                 'trade_id': prim.metadata.get('trade_id'),
-                'time1': self.candles_data[prim.time_start_index]['time'],
-                'time2': None,
+                'time1': prim.metadata.get('original_start_time', self.candles_data[prim.time_start_index]['time']),
+                'time2': prim.metadata.get('original_end_time'),
                 'price1': prim.price_low,
                 'price2': prim.price_high,
                 'fillColor': prim.color,
                 'borderColor': prim.border_color or prim.color,
                 'metadata': prim.metadata
             }
-            
-            # Add time2 if end index exists
-            if prim.time_end_index is not None and prim.time_end_index < len(self.candles_data):
+
+            # Fallback si pas de original_end_time dans metadata
+            if rect['time2'] is None and prim.time_end_index is not None and prim.time_end_index < len(
+                    self.candles_data):
                 rect['time2'] = self.candles_data[prim.time_end_index]['time']
             
             rectangles.append(rect)
