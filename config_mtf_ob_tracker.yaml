@@ -8,7 +8,8 @@ indicators:
     module: tracker_mtf_order_blocks
     panel: main
     params:
-      timeframes: [M5, M15]   # évite M10 si non supporté MT5
+      timeframes: [M5, M10]   # évite M10 si non supporté MT5
+      keep_invalidated: true
 
       # Paramètres EXACTS du module order_blocks.py
       order_blocks_params:
@@ -24,7 +25,7 @@ indicators:
         merge_gap: 0.0
         tf_weights:
           M5: 1.5
-          M15: 2.5
+          M10: 2.5
 
       # Rendu MTF
       max_rectangles: 120

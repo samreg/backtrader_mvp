@@ -120,12 +120,20 @@ class Indicator(IndicatorBase):
             zones = [z for z in tf_res.objects if isinstance(z, ZoneObject)]
             self.tracker.update(tf, zones)
 
+
+
         # --- construire deux vues: trading (actives) vs rendu (actives + invalidées) ---
         all_contributors = []
         for tf in self.timeframes:
             all_contributors.extend(self.tracker.zones_by_tf.get(tf, {}).values())
+            #debug
+            bucket = self.tracker.zones_by_tf.get(tf, {})
+            n_total = len(bucket)
+            n_active = sum(z.state == "active" for z in bucket.values())
+            n_invalid = sum(z.state == "invalidated" for z in bucket.values())
+            print(f"[{tf}] tracker bucket total={n_total} active={n_active} invalidated={n_invalid}")
 
-        contributors_render = [z for z in all_contributors if self._is_visible_for_render(z)]
+        contributors_render = [z for z in all_contributors if z.state in ("active", "invalidated")]
         contributors_active = [z for z in contributors_render if z.state == "active"]
         # 2) agrégation
         agg_render = self.aggregator.aggregate(contributors_render) #historique des zones
@@ -240,6 +248,6 @@ class Indicator(IndicatorBase):
 
             rectangles += 1
 
-        result.add_meta("aggregated_zones", len(agg))
+        result.add_meta("aggregated_zones", len(agg_render))
         result.add_meta("rectangles", rectangles)
         return result
