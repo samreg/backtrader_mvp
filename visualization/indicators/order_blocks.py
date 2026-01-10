@@ -416,3 +416,30 @@ class Indicator(IndicatorBase):
         )
         
         return primitive
+
+    def get_active_zones(self):
+        """
+        Retourne toutes les zones non invalidées.
+        Utile pour le trading multi-timeframes.
+        """
+        return [z for z in self.zones if z.state != "invalid"]
+
+    def get_new_zones(self):
+        """
+        Retourne les zones qui ont été créées sur cette bougie.
+        On utilise last_index pour identifier celles-ci.
+        """
+        if not hasattr(self, "last_processed_index"):
+            self.last_processed_index = -1
+
+        # bougie courante
+        current_index = len(self.data) - 1
+
+        # zones dont start_index == current_index (donc créées maintenant)
+        new_zones = [z for z in self.zones if z.start_index == current_index]
+
+        # mettre à jour l’index
+        self.last_processed_index = current_index
+
+        return new_zones
+

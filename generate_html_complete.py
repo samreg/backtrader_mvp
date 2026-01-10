@@ -13,7 +13,7 @@ Génère:
 - RSI via indicateur
 - Trades overlay via indicateur
 - Stats backtest via analyzer
-- Modal heatmaps
+
 - Navigation trades
 """
 
@@ -125,6 +125,7 @@ def generate_complete_html(config_file='config_rsi_amplitude.yaml'):
 
     # 7. Stats
     analyzer = TradesAnalyzer('output/trades_backtest.csv')
+    df_trades = analyzer.trades  # Ajoute cette ligne
 
     portfolio_stats_file = Path('output/portfolio_stats.json')
     portfolio_pnl = None
@@ -135,7 +136,12 @@ def generate_complete_html(config_file='config_rsi_amplitude.yaml'):
         portfolio_pnl = portfolio_stats.get('total_pnl', None)
 
     stats = analyzer.compute_stats(portfolio_pnl)
-    heatmaps = analyzer.compute_heatmaps()
+
+    # DEBUG
+    #trade_details = analyzer.get_trade_details()
+    #print(f"DEBUG: type(trade_details) = {type(trade_details)}")
+    #print(f"DEBUG: trade_details = {trade_details}")
+
 
     # Generate heatmap image assets (PNG) via dedicated module
     heatmap_assets = generate_heatmap_assets(analyzer, output_dir='output')
@@ -168,9 +174,85 @@ def generate_complete_html(config_file='config_rsi_amplitude.yaml'):
     avg_loss = stats.get('avg_loss', 0.0)
     profit_factor = stats.get('profit_factor', 0.0)
     expectancy_dollars = stats.get('expectancy_dollars', avg_pnl)
-    expectancy_R = 0.0  # R requires risk sizing; kept for later
+    # Calculate expectancy in R (risk-adjusted)
+
+    # Calculate expectancy in R (risk-adjusted)
+    # Calculate expectancy in R (risk-adjusted)
+    try:
+        boxes_df = pd.read_csv('output/boxes_log.csv')
+        print(f"DEBUG: boxes_df columns = {list(boxes_df.columns)}")
+        print(f"DEBUG: First 3 rows:")
+        print(boxes_df.head(3))
+
+        # Check column name (box_type or type)
+        type_col = 'box_type' if 'box_type' in boxes_df.columns else 'type'
+        sl_boxes = boxes_df[boxes_df[type_col] == 'SL']
+
+        print(f"📊 Calcul expectancy_R: {len(sl_boxes)} SL boxes trouvées sur {len(boxes_df)} total")
+
+        risks = []
+        for idx, box in sl_boxes.iterrows():
+            trade_id = box['trade_id']
+            entry = df_trades[(df_trades['trade_id'] == trade_id) &
+                              (df_trades['event_type'] == 'ENTRY')]
+            if len(entry) > 0:
+                entry_price = entry.iloc[0]['price']
+
+                # Get SL price from metadata or calculate from box bounds
+                if 'sl_price' in box and pd.notna(box['sl_price']):
+                    sl_price = box['sl_price']
+                else:
+                    # Fallback: use price_low or price_high depending on direction
+                    direction = entry.iloc[0].get('direction', 'LONG')
+                    if direction == 'LONG':
+                        sl_price = box['price_low']  # SL below entry for LONG
+                    else:
+                        sl_price = box['price_high']  # SL above entry for SHORT
+
+                risk = abs(entry_price - sl_price)
+                if risk > 0:
+                    risks.append(risk)
+
+        if len(risks) > 0:
+            avg_risk = sum(risks) / len(risks)
+            expectancy_R = expectancy_dollars / avg_risk
+            print(f"✅ Expectancy: ${expectancy_dollars:.2f} / Risk moyen: ${avg_risk:.2f} = {expectancy_R:.2f}R")
+        else:
+            print(f"⚠️  Aucun risque calculé, expectancy_R = 0")
+            expectancy_R = 0.0
+
+    except Exception as e:
+        print(f"⚠️  Erreur calcul expectancy_R: {e}")
+        import traceback
+        traceback.print_exc()
+        expectancy_R = 0.0
+
+
+
+    trade_results = []
+    for trade_id in df_trades['trade_id'].unique():
+        exits = df_trades[(df_trades['trade_id'] == trade_id) &
+                          (df_trades['event_type'].isin(['SL', 'TP1', 'TP2', 'BE', 'FORCED_CLOSE']))]
+        if len(exits) > 0:
+            total_pnl = exits['pnl'].sum()
+            trade_results.append(total_pnl)
     max_win_streak = 0
     max_loss_streak = 0
+    current_win_streak = 0
+    current_loss_streak = 0
+
+    for pnl in trade_results:
+        if pnl > 0:
+            current_win_streak += 1
+            current_loss_streak = 0
+            max_win_streak = max(max_win_streak, current_win_streak)
+        elif pnl < 0:
+            current_loss_streak += 1
+            current_win_streak = 0
+            max_loss_streak = max(max_loss_streak, current_loss_streak)
+        else:
+            current_win_streak = 0
+            current_loss_streak = 0
     min_sl_pips = 0
     max_sl_pips = 0
 
@@ -185,9 +267,7 @@ def generate_complete_html(config_file='config_rsi_amplitude.yaml'):
     exp_sl_R = -1.0
     exp_sl_contrib = 0
 
-    # Heatmaps
-    hour_heatmap = heatmaps['hour_heatmap']
-    day_heatmap = heatmaps['day_heatmap']
+
 
     # Trading windows (disabled for now - simplified version)
     tw_enabled = False
@@ -270,6 +350,27 @@ def generate_complete_html(config_file='config_rsi_amplitude.yaml'):
         "@@NET_INFO_LINE@@": net_info_line,
 
         "@@TOTAL_PNL@@": f"{total_pnl:.2f}",
+        # Tokens manquants pour les classes CSS
+        "@@TOTAL_PNL_BRUT@@": f"{total_pnl_brut:.2f}",
+        "@@WINRATE_CLASS@@": "stat-green" if win_rate >= 50 else "stat-red",
+        "@@EXPECTANCY_CLASS@@": "stat-green" if expectancy_dollars > 0 else "stat-red",
+        "@@PNL_CLASS@@": "stat-green" if total_pnl > 0 else "stat-red",
+        "@@PF_CLASS@@": "stat-green" if profit_factor > 1 else "stat-red",
+        "@@STRAT_RETURN_CLASS@@": "stat-green" if strategy_return_pct > 0 else "stat-red",
+        "@@MKT_RETURN_CLASS@@": "stat-green" if market_return_pct > 0 else "stat-red",
+        "@@OUTPERF_CLASS@@": "stat-green" if outperformance > 0 else "stat-red",
+
+        # Tokens pour PnL signé
+        "@@TOTAL_PNL_SIGNED@@": f"{total_pnl:+.2f}",
+        "@@TOTAL_PNL_BRUT_SIGNED@@": f"{total_pnl_brut:+.2f}",
+
+        # Tokens pour affichage conditionnel
+        "@@BRUT_LINE_DISPLAY@@": "block" if portfolio_pnl_with_commissions is not None else "none",
+        "@@NET_INFO_DISPLAY@@": "block" if portfolio_pnl_with_commissions is not None else "none",
+        "@@RSI_PANEL_DISPLAY@@": "" if len(rsi_data) > 0 else "none",
+
+        # Token pour message outperformance
+        "@@OUTPERF_MSG@@": "✅ Stratégie surperforme le marché" if outperformance > 0 else "⚠️ Marché surperforme la stratégie",
         "@@PNL_NET_LABEL@@": "(net)" if portfolio_pnl_with_commissions is not None else "(brut)",
         "@@PNL_BRUT_BLOCK@@": (f"<div style=\"font-size: 0.65em; color: #888; margin-top: 2px;\">Brut: ${total_pnl_brut:.2f}</div>" if portfolio_pnl_with_commissions is not None else ""),
         "@@AVG_WIN@@": f"{avg_win:.2f}",

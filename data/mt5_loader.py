@@ -141,7 +141,28 @@ class MT5Loader:
         df = df.sort_values('datetime').reset_index(drop=True)
         
         return df
-    
+
+    def align_multi_tf(self, candles_by_tf):
+        """
+        candles_by_tf : dict { "M1": df1, "M5": df5, ... }
+
+        Retourne tous les DataFrames tronqués à l'historique commun.
+        """
+
+        # 1. Trouver la dernière date de début (max des starts)
+        common_start = max(df.index.min() for df in candles_by_tf.values())
+
+        # 2. Trouver la première date de fin (min des ends)
+        common_end = min(df.index.max() for df in candles_by_tf.values())
+
+        # 3. Tronquer toutes les TF sur cette fenêtre
+        aligned = {
+            tf: df[(df.index >= common_start) & (df.index <= common_end)]
+            for tf, df in candles_by_tf.items()
+        }
+
+        return aligned
+
     def load_multi_tf(
         self,
         symbol: str,
@@ -239,6 +260,8 @@ class MT5Loader:
             df.reset_index(drop=True, inplace=True)
             
             candles_by_tf[tf] = df
+            # NOUVELLE ÉTAPE : alignement
+            candles_by_tf = self.align_multi_tf(candles_by_tf)
             
             print(f"✅ {len(df)} bars ({df['time'].iloc[0]} → {df['time'].iloc[-1]})")
         
