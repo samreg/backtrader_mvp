@@ -53,6 +53,11 @@ class Indicator(IndicatorBase):
         )
 
     @staticmethod
+    def _is_visible_for_render(z: ZoneObject) -> bool:
+        # On veut voir les zones actives ET invalidées (historique)
+        return z.state in ("active", "invalidated")
+
+    @staticmethod
     def _as_time_df(df: pd.DataFrame) -> pd.DataFrame:
         """
         Garantit une colonne 'time' en pandas datetime, quel que soit le format d'entrée:
@@ -115,39 +120,47 @@ class Indicator(IndicatorBase):
             zones = [z for z in tf_res.objects if isinstance(z, ZoneObject)]
             self.tracker.update(tf, zones)
 
-        #recup
-        all_zones = self.tracker.get_all_zones()  # active + invalidated
-        active_zones = self.tracker.get_active_zones()  # active seulement
+        # --- construire deux vues: trading (actives) vs rendu (actives + invalidées) ---
+        all_contributors = []
+        for tf in self.timeframes:
+            all_contributors.extend(self.tracker.zones_by_tf.get(tf, {}).values())
 
+        contributors_render = [z for z in all_contributors if self._is_visible_for_render(z)]
+        contributors_active = [z for z in contributors_render if z.state == "active"]
         # 2) agrégation
-        agg = self.tracker.aggregate()
-        agg_active = self.aggregator.aggregate(active_zones)
-        agg_render = self.aggregator.aggregate(all_zones, include_invalidated=True)
+        agg_render = self.aggregator.aggregate(contributors_render) #historique des zones
+        agg_active = self.aggregator.aggregate(contributors_active)  # si tu veux t'en servir plus tard
+
+
+
+
+
+
 
         # 3) produire des zones “agrégées” + rectangles
         rectangles = 0
-        for i, az in enumerate(agg):
+        for i, az in enumerate(agg_render):
             if rectangles >= self.max_rectangles:
                 break
 
-            # t_start / t_end : on prend l’enveloppe temporelle des contributeurs
             contributors = az.contributors
-
             active_contrib = [z for z in contributors if z.state == "active"]
             invalid_contrib = [z for z in contributors if z.state == "invalidated"]
 
             t_start = min(z.t_start for z in contributors)
 
-            # Règle: l'agrégat reste valable tant qu'il reste au moins 1 contributeur actif
+            # règle: zone agrégée valide tant qu'il reste au moins un contributeur actif
             if len(active_contrib) > 0:
                 agg_state = "active"
                 t_end = None
-                exit_idx = None
+                end_idx = None
             else:
                 agg_state = "invalidated"
-                # fin = dernière invalidation (max t_end)
+                # fin = dernière invalidation (max t_end) puisque plus aucun actif
                 t_end = max(z.t_end for z in invalid_contrib if z.t_end is not None)
-                exit_idx = self._project_time_to_index(main_index, pd.to_datetime(t_end))
+                end_idx = self._project_time_to_index(main_index, pd.to_datetime(t_end))
+
+            # mitigation
 
             mitigation_sum_active = sum(getattr(z, "mitigation_count", 0) for z in active_contrib)
             mitigation_score_sum_active = sum(getattr(z, "mitigation_score", 0.0) for z in active_contrib)
@@ -181,7 +194,7 @@ class Indicator(IndicatorBase):
             zobj = ZoneObject(
                 id=zone_id,
                 t_start=pd.to_datetime(t_start),
-                t_end=t_end,
+                t_end=pd.to_datetime(t_end) if t_end else None,
                 low=float(az.low),
                 high=float(az.high),
                 type="order_block_mtf",
@@ -206,7 +219,7 @@ class Indicator(IndicatorBase):
             rect = RectanglePrimitive(
                 id=f"rect_{zone_id}",
                 time_start_index=int(start_idx),
-                time_end_index=None if exit_idx is None else int(exit_idx),
+                time_end_index=None if end_idx is None else int(end_idx),
                 price_low=float(az.low),
                 price_high=float(az.high),
                 color=color,
