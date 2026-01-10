@@ -21,6 +21,7 @@ TIMEFRAME_MAP = {
     'M2': (mt5.TIMEFRAME_M2, 2),
     'M3': (mt5.TIMEFRAME_M3, 3),
     'M5': (mt5.TIMEFRAME_M5, 5),
+    'M10': (mt5.TIMEFRAME_M10, 10),
     'M15': (mt5.TIMEFRAME_M15, 15),
     'M30': (mt5.TIMEFRAME_M30, 30),
     'H1': (mt5.TIMEFRAME_H1, 60),
@@ -320,7 +321,13 @@ def load_candles_from_config(config: dict) -> Dict[str, pd.DataFrame]:
     for ind in config.get('indicators', []):
         tf = ind.get('timeframe', main_tf)
         required_tfs.add(tf)
-    
+
+        params = ind.get("params", {}) or {}
+        mtfs = params.get("timeframes")
+        if isinstance(mtfs, list):
+            for t in mtfs:
+                required_tfs.add(t)
+
     # Load data
     with MT5Loader() as loader:
         candles_by_tf = loader.load_multi_tf(

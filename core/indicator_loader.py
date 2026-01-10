@@ -70,43 +70,41 @@ class IndicatorLoader:
         indicator.timeframe = timeframe
         
         return indicator
-    
+
     def _load_indicator_class(self, module_file: str) -> Type[IndicatorBase]:
         """
         Load indicator class from module file
-        
-        Args:
-            module_file: Module filename
-        
-        Returns:
-            Indicator class
         """
-        # Check cache
+
+        # Normaliser: accepter "ema" ou "ema.py"
+        if not module_file.endswith(".py"):
+            module_file = f"{module_file}.py"
+
+        # Check cache (après normalisation)
         if module_file in self._cache:
             return self._cache[module_file]
-        
+
         # Build full path
         module_path = self.indicators_dir / module_file
-        
+
         if not module_path.exists():
             raise FileNotFoundError(
                 f"Indicator module not found: {module_path}\n"
                 f"Make sure {module_file} exists in {self.indicators_dir}/"
             )
-        
-        # Load module dynamically
+
+        # Load module dynamiquement
         module_name = module_path.stem
         spec = importlib.util.spec_from_file_location(module_name, module_path)
-        
+
         if spec is None or spec.loader is None:
             raise ImportError(f"Failed to load module: {module_path}")
-        
+
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
-        
-        # Find indicator class
-        # Convention: Module must have a class named "Indicator"
+
+        # Convention: classe "Indicator"
         if not hasattr(module, 'Indicator'):
             raise AttributeError(
                 f"Module {module_file} must define a class named 'Indicator'\n"
@@ -115,10 +113,9 @@ class IndicatorLoader:
                 f"      def calculate(self, candles):\n"
                 f"          ..."
             )
-        
+
         indicator_class = module.Indicator
-        
-        # Verify it inherits from IndicatorBase
+
         if not issubclass(indicator_class, IndicatorBase):
             raise TypeError(
                 f"Indicator class in {module_file} must inherit from IndicatorBase\n"
@@ -127,12 +124,10 @@ class IndicatorLoader:
                 f"  class Indicator(IndicatorBase):\n"
                 f"      ..."
             )
-        
-        # Cache it
+
         self._cache[module_file] = indicator_class
-        
         return indicator_class
-    
+
     def clear_cache(self):
         """Clear cached indicator classes (useful for development/reload)"""
         self._cache.clear()

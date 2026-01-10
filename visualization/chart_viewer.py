@@ -114,9 +114,13 @@ def generate_chart_html(config_file: str):
         try:
             # Get candles for this TF
             candles = candles_by_tf[ind_tf].copy()
-            
+
             # Execute
-            result = indicator.calculate(candles)
+            if hasattr(indicator, "calculate_multi"):
+                result = indicator.calculate_multi(candles_by_tf=candles_by_tf, main_tf=main_tf)
+            else:
+                result = indicator.calculate(candles)
+
             indicator_results[ind_name] = result
             
             print(f"      ✅ {len(result.series)} series, {len(result.objects)} objects")
