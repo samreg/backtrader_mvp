@@ -155,33 +155,18 @@ def generate_html_content(config, candles_by_tf, indicator_results, indicators_c
 
     # Get main TF candles
     main_candles = candles_by_tf[main_tf]
-    
+    # Source de vérité temporelle (compatible DatetimeIndex)
+    timestamps = [int(ts.timestamp()) for ts in pd.to_datetime(main_candles.index)]
+
     # Convert candles to JS format
     candles_data = []
-
-    print("main_candles columns:", main_candles.columns.tolist())
-    print("main_candles index type:", type(main_candles.index))
-
-    for idx, row in main_candles.iterrows():
-        # Support ancien format (colonne 'time')
-        if 'time' in row.index:
-            dt = row['time']
-        # Support nouveau format (colonne 'datetime')
-        elif 'datetime' in row.index:
-            dt = row['datetime']
-        # Support format recommandé (datetime dans l’index)
-        else:
-            dt = idx
-
-        dt = pd.to_datetime(dt)
-        timestamp = int(dt.timestamp())
-
+    for ts, row in zip(timestamps, main_candles.itertuples()):
         candles_data.append({
-            'time': timestamp,
-            'open': float(row['open']),
-            'high': float(row['high']),
-            'low': float(row['low']),
-            'close': float(row['close'])
+            'time': ts,
+            'open': float(row.open),
+            'high': float(row.high),
+            'low': float(row.low),
+            'close': float(row.close),
         })
 
     # Organize indicators by panel
@@ -442,10 +427,10 @@ def generate_html_content(config, candles_by_tf, indicator_results, indicators_c
         for series_name, series_data in result.series.items():
             # Convert to JS format
             series_js = []
-            for i, val in enumerate(series_data):
+            for ts, val in zip(timestamps, series_data):
                 if pd.notna(val):
                     series_js.append({
-                        'time': candles_data[i]['time'],
+                        'time': ts,
                         'value': float(val)
                     })
             
@@ -616,7 +601,7 @@ def generate_html_content(config, candles_by_tf, indicator_results, indicators_c
     segments_data = []
     
     # Create timestamp to index mapping
-    time_to_index = {int(pd.to_datetime(idx).timestamp()): i for i, idx in enumerate(main_candles.index)}
+    time_to_index = {ts: i for i, ts in enumerate(timestamps)}
 
     for segment in all_segments:
         # Convert timestamps to indices
@@ -740,10 +725,10 @@ def generate_html_content(config, candles_by_tf, indicator_results, indicators_c
             
             for series_name, series_data in result.series.items():
                 series_js = []
-                for i, val in enumerate(series_data):
+                for ts, val in zip(timestamps, series_data):
                     if pd.notna(val):
                         series_js.append({
-                            'time': candles_data[i]['time'],
+                            'time': ts,
                             'value': float(val)
                         })
                 

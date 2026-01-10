@@ -1,0 +1,43 @@
+data:
+  main_timeframe: M5
+  n_bars: 2000
+  source: mt5
+  symbol: o
+display:
+  show_inactive_zones: false
+indicators:
+- module: ema.py
+  name: ema_M5
+  panel: main
+  params:
+    period: 20
+  style:
+    color: '#2196F3'
+    linewidth: 2
+  timeframe: M5
+- module: order_blocks.py
+  name: order_blocks_M5
+  panel: main
+  params:
+    lookback: 100
+    max_zones: 15
+    min_body_size: 2.0
+  timeframe: M5
+- module: bos_choch.py
+  name: bos_choch_M5
+  panel: main
+  params:
+    min_break_pct: 0.001
+    swing_length: 10
+  timeframe: M5
+- module: zone_aggregator.py
+  name: zone_aggregator_M5
+  panel: bottom_1
+  params:
+    sources:
+    - indicator: order_blocks_M5
+      type: order_block
+  style:
+    color: '#FF9800'
+    linewidth: 2
+  timeframe: M5

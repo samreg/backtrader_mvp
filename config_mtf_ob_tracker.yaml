@@ -1,0 +1,23 @@
+data:
+  symbol: EURUSD
+  main_timeframe: M3
+  n_bars: 2000
+
+mtf_order_blocks:
+  timeframes: [M5, M10, M15]   # tu peux ajouter M1 ou M3 aussi
+  params:
+    swing_length: 10
+    min_body_size: 0.0002
+    imbalance_bars: 3
+    max_zones: 25
+    skip_impulse_candles: 2
+
+aggregator:
+  overlap_min_ratio: 0.2
+  merge_gap: 0.0
+  tf_weights:
+    M1: 1.0
+    M3: 1.2
+    M5: 1.5
+    M10: 2.0
+    M15: 2.5
