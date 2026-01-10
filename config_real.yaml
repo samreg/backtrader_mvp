@@ -2,9 +2,8 @@
 # Utilise tes données MT5 avec Order Blocks + BOS/CHOCH
 
 data:
-  source: mt5
-  symbol: NAS100
-  main_timeframe: M3
+  symbol: "NAS100"
+  main_timeframe: "M3"
   n_bars: 5000
   start_date: '2025-08-01'
   end_date: '2025-12-31'

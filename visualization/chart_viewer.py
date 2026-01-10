@@ -44,8 +44,11 @@ def generate_chart_html(config_file: str):
         config = yaml.safe_load(f)
     
     symbol = config['data']['symbol']
-    main_tf = config['data']['main_timeframe']
-    
+    data_cfg = config.get('data', {})
+    main_tf = data_cfg.get('main_timeframe') or data_cfg.get('timeframe')
+    if not main_tf:
+        raise KeyError("Config data.main_timeframe (ou data.timeframe) manquant")
+
     print(f"   Symbol: {symbol}")
     print(f"   Main TF: {main_tf}")
     n_bars = config['data'].get('n_bars', 'N/A')
@@ -145,15 +148,34 @@ def generate_html_content(config, candles_by_tf, indicator_results, indicators_c
     """Generate HTML content with LightweightCharts"""
     
     symbol = config['data']['symbol']
-    main_tf = config['data']['main_timeframe']
-    
+    data_cfg = config.get('data', {})
+    main_tf = data_cfg.get('main_timeframe') or data_cfg.get('timeframe')
+    if not main_tf:
+        raise KeyError("Config data.main_timeframe (ou data.timeframe) manquant")
+
     # Get main TF candles
     main_candles = candles_by_tf[main_tf]
     
     # Convert candles to JS format
     candles_data = []
-    for _, row in main_candles.iterrows():
-        timestamp = int(row['time'].timestamp())
+
+    print("main_candles columns:", main_candles.columns.tolist())
+    print("main_candles index type:", type(main_candles.index))
+
+    for idx, row in main_candles.iterrows():
+        # Support ancien format (colonne 'time')
+        if 'time' in row.index:
+            dt = row['time']
+        # Support nouveau format (colonne 'datetime')
+        elif 'datetime' in row.index:
+            dt = row['datetime']
+        # Support format recommandé (datetime dans l’index)
+        else:
+            dt = idx
+
+        dt = pd.to_datetime(dt)
+        timestamp = int(dt.timestamp())
+
         candles_data.append({
             'time': timestamp,
             'open': float(row['open']),
@@ -161,7 +183,7 @@ def generate_html_content(config, candles_by_tf, indicator_results, indicators_c
             'low': float(row['low']),
             'close': float(row['close'])
         })
-    
+
     # Organize indicators by panel
     panels = {'main': [], 'bottom_1': [], 'bottom_2': [], 'bottom_3': []}
     
@@ -594,8 +616,8 @@ def generate_html_content(config, candles_by_tf, indicator_results, indicators_c
     segments_data = []
     
     # Create timestamp to index mapping
-    time_to_index = {int(row['time'].timestamp()): idx for idx, row in main_candles.iterrows()}
-    
+    time_to_index = {int(pd.to_datetime(idx).timestamp()): i for i, idx in enumerate(main_candles.index)}
+
     for segment in all_segments:
         # Convert timestamps to indices
         start_ts = int(segment.t_start.timestamp())

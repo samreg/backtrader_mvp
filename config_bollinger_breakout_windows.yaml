@@ -10,8 +10,8 @@ strategy_module: "strategy_bollinger_breakout"
 # === DONNÉES ===
 data:
   symbol: "NAS100"
-  timeframe: "M3"
-  months: 6
+  main_timeframe: "M3"
+  n_bars: 2000
   file: "data/NAS100_M3.csv"
   use_specific_csv_file: false
 

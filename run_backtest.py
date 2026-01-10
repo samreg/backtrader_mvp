@@ -223,7 +223,7 @@ def main():
     
     # Extraire paramètres
     symbol = config['data']['symbol']
-    timeframe = config['data']['timeframe']
+    main_timeframe = config['data']['main_timeframe']
     months = config['data']['months']
     auto_html = config['execution']['auto_html']
     auto_open_browser = config['execution']['auto_open_browser']
@@ -231,7 +231,7 @@ def main():
     print("📋 Configuration:")
     print(f"   Config: {config_file}")
     print(f"   Symbole: {symbol}")
-    print(f"   Timeframe: {timeframe}")
+    print(f"   main_timeframe: {main_timeframe}")
     print(f"   Historique: {months} mois")
     
     # ÉTAPE 1: Assurer fichier de données existe

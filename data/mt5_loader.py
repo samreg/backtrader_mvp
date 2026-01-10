@@ -18,6 +18,7 @@ import math
 # Timeframe mapping
 TIMEFRAME_MAP = {
     'M1': (mt5.TIMEFRAME_M1, 1),
+    'M2': (mt5.TIMEFRAME_M2, 2),
     'M3': (mt5.TIMEFRAME_M3, 3),
     'M5': (mt5.TIMEFRAME_M5, 5),
     'M15': (mt5.TIMEFRAME_M15, 15),
@@ -142,25 +143,26 @@ class MT5Loader:
         
         return df
 
-    def align_multi_tf(self, candles_by_tf):
+    def align_multi_tf(self, candles_by_tf: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
         """
-        candles_by_tf : dict { "M1": df1, "M5": df5, ... }
-
-        Retourne tous les DataFrames tronqués à l'historique commun.
+        Aligne tous les DataFrames sur la fenêtre temporelle commune.
+        Suppose que l'index est un DateTimeIndex.
         """
+        if not candles_by_tf:
+            return candles_by_tf
 
-        # 1. Trouver la dernière date de début (max des starts)
+        # sécurité: enlever les df vides
+        candles_by_tf = {tf: df for tf, df in candles_by_tf.items() if df is not None and len(df) > 0}
+        if not candles_by_tf:
+            return candles_by_tf
+
         common_start = max(df.index.min() for df in candles_by_tf.values())
-
-        # 2. Trouver la première date de fin (min des ends)
         common_end = min(df.index.max() for df in candles_by_tf.values())
 
-        # 3. Tronquer toutes les TF sur cette fenêtre
         aligned = {
-            tf: df[(df.index >= common_start) & (df.index <= common_end)]
+            tf: df.loc[(df.index >= common_start) & (df.index <= common_end)].copy()
             for tf, df in candles_by_tf.items()
         }
-
         return aligned
 
     def load_multi_tf(
@@ -207,7 +209,16 @@ class MT5Loader:
                 f"Symbol {symbol} not found in MT5.\n"
                 f"Check symbol name or broker availability."
             )
-        
+
+        # garantir que main_tf est dans required_tfs
+        required = []
+        seen = set()
+        for tf in [main_tf] + list(required_tfs):
+            if tf not in seen:
+                required.append(tf)
+                seen.add(tf)
+        required_tfs = required
+
         # Get main TF minutes
         if main_tf not in TIMEFRAME_MAP:
             raise ValueError(f"Unknown timeframe: {main_tf}")
@@ -253,18 +264,19 @@ class MT5Loader:
             
             # Convert to DataFrame
             df = pd.DataFrame(rates)
-            df['time'] = pd.to_datetime(df['time'], unit='s')
-            df = df[['time', 'open', 'high', 'low', 'close', 'tick_volume']]
+            df['datetime'] = pd.to_datetime(df['time'], unit='s')
+            df = df[['datetime', 'open', 'high', 'low', 'close', 'tick_volume']]
             df.rename(columns={'tick_volume': 'volume'}, inplace=True)
-            df.sort_values('time', inplace=True)
-            df.reset_index(drop=True, inplace=True)
-            
+
+            df.sort_values('datetime', inplace=True)
+            df.set_index('datetime', inplace=True)  # <-- IMPORTANT
+
             candles_by_tf[tf] = df
-            # NOUVELLE ÉTAPE : alignement
-            candles_by_tf = self.align_multi_tf(candles_by_tf)
-            
-            print(f"✅ {len(df)} bars ({df['time'].iloc[0]} → {df['time'].iloc[-1]})")
-        
+            print(f"✅ {len(df)} bars ({df.index[0]} → {df.index[-1]})")
+
+
+        # NOUVELLE ÉTAPE : alignement
+        candles_by_tf = self.align_multi_tf(candles_by_tf)
         print(f"✅ Loaded {len(candles_by_tf)} timeframes\n")
         
         return candles_by_tf
@@ -359,7 +371,7 @@ def ensure_data_file(config: dict) -> str:
     else:
         # MODE AUTO: générer depuis MT5
         symbol = config['data']['symbol']
-        timeframe = config['data']['timeframe']
+        timeframe = config['data']['main_timeframe']
         months = config['data'].get('months', 6)
         
         filename = get_data_filename(symbol, timeframe)

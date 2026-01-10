@@ -5,9 +5,10 @@
 # === DONNÉES ===
 data:
   symbol: "NAS100"              # Symbole à trader
-  timeframe: "M3"             # Timeframe (M1, M3, M5, M15, M30, H1, H4, D1)
-  months: 6                     # Historique MT5 à télécharger (en mois)
-  file: "data/NAS100_M3.csv"  # Fichier de données
+  main_timeframe: "M3"             # Timeframe (M1, M3, M5, M15, M30, H1, H4, D1)
+  #months: 6                     # Historique MT5 à télécharger (en mois)
+  n_bars: 2000
+  #file: "data/NAS100_M3.csv"  # Fichier de données
   use_specific_csv_file: false  # true = utilise 'file' ci-dessus | false = auto-génère depuis symbol+timeframe
 
 # === EXÉCUTION ===

@@ -156,13 +156,13 @@ def run_backtest(config_file='config_rsi_amplitude.yaml'):
         use_specific = config['data'].get('use_specific_csv_file', False)
         
         if use_specific:
-            data_file = config['data'].get('file', 'data/NAS100_3min.csv')
+            data_file = config['data'].get('file', 'data/non_trouve.csv')
         else:
-            symbol = config['data'].get('symbol', 'NAS100')
-            timeframe = config['data'].get('timeframe', '3min')
+            symbol = config['data'].get('symbol', 'non_trouve')
+            timeframe = config['data'].get('main_timeframe', 'non_trouve')
             data_file = f"data/{symbol}_{timeframe}.csv"
     else:
-        data_file = config.get('data_file', 'data/NAS100_3min.csv')
+        data_file = config.get('data_file', 'data/non_trouve.csv')
     
     print(f"Fichier données: {data_file}")
     

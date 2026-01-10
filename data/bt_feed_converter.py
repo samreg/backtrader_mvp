@@ -8,7 +8,7 @@ class PandasDataFeed(bt.feeds.PandasData):
     Le DataFrame doit contenir : datetime, open, high, low, close, volume.
     """
     params = (
-        ('datetime', 'datetime'),
+        ('datetime', None),
         ('open', 'open'),
         ('high', 'high'),
         ('low', 'low'),
