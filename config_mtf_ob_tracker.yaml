@@ -1,30 +1,32 @@
 data:
-  symbol: "NAS100"
-  main_timeframe: "M3"
-  n_bars: 2000
+  symbol: NAS100
+  main_timeframe: M3
+  n_bars: 10000
 
 indicators:
   - name: tracker_mtf_ob
     module: tracker_mtf_order_blocks
     panel: main
     params:
-      timeframes: [M5, M10, M15]
+      timeframes: [M5, M15]   # évite M10 si non supporté MT5
 
+      # Paramètres EXACTS du module order_blocks.py
       order_blocks_params:
         swing_length: 10
-        min_body_size: 0.0002
+        min_body_size: 2.0
         imbalance_bars: 3
-        max_zones: 25
+        max_zones: 15
         skip_impulse_candles: 2
 
+      # Agrégation
       aggregator:
         overlap_min_ratio: 0.2
         merge_gap: 0.0
         tf_weights:
           M5: 1.5
-          M10: 2.0
           M15: 2.5
 
+      # Rendu MTF
       max_rectangles: 120
       alpha_base: 0.18
       alpha_per_score: 0.03

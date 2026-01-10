@@ -57,6 +57,12 @@ class OrderBlockTracker:
                     res.append(z)
         return res
 
+    def get_all_zones(self, tfs: Optional[List[str]] = None) -> List[ZoneObject]:
+        res: List[ZoneObject] = []
+        for tf in (tfs or list(self.zones_by_tf.keys())):
+            res.extend(self.zones_by_tf.get(tf, {}).values())
+        return res
+
     def aggregate(self) -> List[AggregatedZone]:
         self._last_aggregated = self.aggregator.aggregate(self.get_active_zones())
         return self._last_aggregated

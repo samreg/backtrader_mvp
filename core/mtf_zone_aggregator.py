@@ -12,6 +12,7 @@ class AggregatedZone:
     score: float
     tf_counts: Dict[str, int] = field(default_factory=dict)
     contributors: List[ZoneObject] = field(default_factory=list)
+    directions: Dict[str, int] = field(default_factory=dict)   # <-- AJOUT
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def contains(self, price: float) -> bool:
@@ -82,10 +83,18 @@ class MTFZoneAggregator:
 
             tf_counts: Dict[str, int] = {}
             score = 0.0
+            directions: Dict[str, int] = {}
             for x in c:
                 tf = x.source_tf or "UNKNOWN"
                 tf_counts[tf] = tf_counts.get(tf, 0) + 1
                 score += float(self.tf_weights.get(tf, 1.0))
+
+                d = None
+                if isinstance(x.metadata, dict):
+                    d = x.metadata.get("direction") or x.metadata.get("side")
+                if d:
+                    d = str(d).lower()
+                    directions[d] = directions.get(d, 0) + 1
 
             out.append(
                 AggregatedZone(
@@ -94,6 +103,7 @@ class MTFZoneAggregator:
                     score=score,
                     tf_counts=tf_counts,
                     contributors=c,
+                    directions=directions,
                     metadata={"n_sources": len(c)},
                 )
             )

@@ -55,16 +55,28 @@ class Indicator(IndicatorBase):
     @staticmethod
     def _as_time_df(df: pd.DataFrame) -> pd.DataFrame:
         """
-        OrderBlocks et IndicatorBase supportent 'time' colonne ou DatetimeIndex.
-        Pour être robuste, on fournit une colonne 'time' si index datetime.
+        Garantit une colonne 'time' en pandas datetime, quel que soit le format d'entrée:
+        - DatetimeIndex (format MT5 loader aligné)
+        - colonne 'datetime'
+        - colonne 'time'
         """
         out = df.copy()
+
+        # 1) si index datetime -> le mettre en colonne 'time'
         if isinstance(out.index, pd.DatetimeIndex):
             out = out.reset_index().rename(columns={"index": "time"})
-        elif "time" not in out.columns:
-            # fallback: si index pas datetime mais on a 'datetime'
-            if "datetime" in out.columns:
-                out["time"] = out["datetime"]
+
+        # 2) sinon si 'time' absent mais 'datetime' présent -> renommer/copier
+        if "time" not in out.columns and "datetime" in out.columns:
+            out["time"] = out["datetime"]
+
+        # 3) si toujours pas de 'time', erreur explicite
+        if "time" not in out.columns:
+            raise KeyError(
+                "tracker_mtf_order_blocks: impossible de construire la colonne 'time'. "
+                f"Colonnes disponibles: {out.columns.tolist()} | index={type(df.index)}"
+            )
+
         out["time"] = pd.to_datetime(out["time"])
         return out
 
@@ -103,8 +115,14 @@ class Indicator(IndicatorBase):
             zones = [z for z in tf_res.objects if isinstance(z, ZoneObject)]
             self.tracker.update(tf, zones)
 
+        #recup
+        all_zones = self.tracker.get_all_zones()  # active + invalidated
+        active_zones = self.tracker.get_active_zones()  # active seulement
+
         # 2) agrégation
         agg = self.tracker.aggregate()
+        agg_active = self.aggregator.aggregate(active_zones)
+        agg_render = self.aggregator.aggregate(all_zones, include_invalidated=True)
 
         # 3) produire des zones “agrégées” + rectangles
         rectangles = 0
@@ -113,29 +131,72 @@ class Indicator(IndicatorBase):
                 break
 
             # t_start / t_end : on prend l’enveloppe temporelle des contributeurs
-            t_start = min(z.t_start for z in az.contributors)
-            t_end_candidates = [z.t_end for z in az.contributors if z.t_end is not None]
-            t_end = max(t_end_candidates) if t_end_candidates else None
+            contributors = az.contributors
+
+            active_contrib = [z for z in contributors if z.state == "active"]
+            invalid_contrib = [z for z in contributors if z.state == "invalidated"]
+
+            t_start = min(z.t_start for z in contributors)
+
+            # Règle: l'agrégat reste valable tant qu'il reste au moins 1 contributeur actif
+            if len(active_contrib) > 0:
+                agg_state = "active"
+                t_end = None
+                exit_idx = None
+            else:
+                agg_state = "invalidated"
+                # fin = dernière invalidation (max t_end)
+                t_end = max(z.t_end for z in invalid_contrib if z.t_end is not None)
+                exit_idx = self._project_time_to_index(main_index, pd.to_datetime(t_end))
+
+            mitigation_sum_active = sum(getattr(z, "mitigation_count", 0) for z in active_contrib)
+            mitigation_score_sum_active = sum(getattr(z, "mitigation_score", 0.0) for z in active_contrib)
 
             # projection sur main timeframe (indices)
             start_idx = self._project_time_to_index(main_index, pd.to_datetime(t_start))
             end_idx = self._project_time_to_index(main_index, pd.to_datetime(t_end)) if t_end else None
+
+            bull = az.directions.get("bullish", 0) + az.directions.get("bull", 0)
+            bear = az.directions.get("bearish", 0) + az.directions.get("bear", 0)
+
+            if bull > bear:
+                dom_dir = "bullish"
+            elif bear > bull:
+                dom_dir = "bearish"
+            else:
+                dom_dir = "mixed"
+
+            if dom_dir == "bullish":
+                color = "#00b894"  # vert
+                label_dir = "OB Bull"
+            elif dom_dir == "bearish":
+                color = "#d63031"  # rouge
+                label_dir = "OB Bear"
+            else:
+                color = "#6c5ce7"  # violet (mix)
+                label_dir = "OB Mix"
 
             # ZoneObject agrégée (legacy)
             zone_id = f"ob_mtf_{i}"
             zobj = ZoneObject(
                 id=zone_id,
                 t_start=pd.to_datetime(t_start),
-                t_end=pd.to_datetime(t_end) if t_end else None,
+                t_end=t_end,
                 low=float(az.low),
                 high=float(az.high),
                 type="order_block_mtf",
-                state="active",
+                state=agg_state,
                 source_tf="MTF",
                 metadata={
                     "score": az.score,
                     "tf_counts": az.tf_counts,
                     "n_sources": az.metadata.get("n_sources"),
+                    "direction": dom_dir,
+                    "direction_counts": az.directions,
+                    "mitigation_count_active_sum": mitigation_sum_active,
+                    "mitigation_score_active_sum": mitigation_score_sum_active,
+                    "contributors_active": len(active_contrib),
+                    "contributors_invalidated": len(invalid_contrib),
                 },
             )
             result.add_object(zobj)
@@ -145,15 +206,22 @@ class Indicator(IndicatorBase):
             rect = RectanglePrimitive(
                 id=f"rect_{zone_id}",
                 time_start_index=int(start_idx),
-                time_end_index=None if end_idx is None else int(end_idx),
+                time_end_index=None if exit_idx is None else int(exit_idx),
                 price_low=float(az.low),
                 price_high=float(az.high),
-                color="#6c5ce7",
+                color=color,
                 alpha=float(alpha),
-                border_color="#6c5ce7",
+                border_color=color,
                 border_width=1,
-                label=f"OB-MTF s={az.score:.1f}",
-                metadata={"tf_counts": az.tf_counts, "score": az.score},
+                label=(f"OB-MTF s={az.score:.1f} mit={mitigation_sum_active}" if agg_state == "active" else f"OB-MTF (X) s={az.score:.1f}"),
+
+                metadata={
+                    "tf_counts": az.tf_counts,
+                    "score": az.score,
+                    "direction": dom_dir,
+                    "state": agg_state,
+                    "mitigation_count_active_sum": mitigation_sum_active,
+                },
             )
             result.add_primitive(rect)
 
