@@ -125,9 +125,9 @@ class Indicator(IndicatorBase):
         # --- construire deux vues: trading (actives) vs rendu (actives + invalidées) ---
         all_contributors = []
         for tf in self.timeframes:
-            all_contributors.extend(self.tracker.zones_by_tf.get(tf, {}).values())
-            #debug
             bucket = self.tracker.zones_by_tf.get(tf, {})
+            all_contributors.extend(bucket.values())
+
             n_total = len(bucket)
             n_active = sum(z.state == "active" for z in bucket.values())
             n_invalid = sum(z.state == "invalidated" for z in bucket.values())
@@ -175,7 +175,9 @@ class Indicator(IndicatorBase):
 
             # projection sur main timeframe (indices)
             start_idx = self._project_time_to_index(main_index, pd.to_datetime(t_start))
-            end_idx = self._project_time_to_index(main_index, pd.to_datetime(t_end)) if t_end else None
+            end_idx = None
+            if t_end is not None:
+                end_idx = self._project_time_to_index(main_index, pd.to_datetime(t_end))
 
             bull = az.directions.get("bullish", 0) + az.directions.get("bull", 0)
             bear = az.directions.get("bearish", 0) + az.directions.get("bear", 0)
