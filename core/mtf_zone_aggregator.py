@@ -45,10 +45,11 @@ class MTFZoneAggregator:
         return inter / min(a_len, b_len)
 
     def aggregate(self, zones: List[ZoneObject]) -> List[AggregatedZone]:
-        # garder uniquement actives
-        active = [z for z in zones if z.state == "active"]
-        if not active:
+        # Agrège les zones données (ne filtre PAS par état)
+        if not zones:
             return []
+
+        active = zones  # Renommé pour compatibilité avec le code existant
 
         # tri par low/high
         active.sort(key=lambda z: (z.low, z.high))

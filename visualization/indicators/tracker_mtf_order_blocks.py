@@ -120,8 +120,6 @@ class Indicator(IndicatorBase):
             zones = [z for z in tf_res.objects if isinstance(z, ZoneObject)]
             self.tracker.update(tf, zones)
 
-
-
         # --- construire deux vues: trading (actives) vs rendu (actives + invalidées) ---
         all_contributors = []
         for tf in self.timeframes:
@@ -133,19 +131,19 @@ class Indicator(IndicatorBase):
             n_invalid = sum(z.state == "invalidated" for z in bucket.values())
             print(f"[{tf}] tracker bucket total={n_total} active={n_active} invalidated={n_invalid}")
 
-        contributors_render = [z for z in all_contributors if z.state in ("active", "invalidated")]
-        contributors_active = [z for z in contributors_render if z.state == "active"]
-        # 2) agrégation
-        agg_render = self.aggregator.aggregate(contributors_render) #historique des zones
-        agg_active = self.aggregator.aggregate(contributors_active)  # si tu veux t'en servir plus tard
+        contributors_active = [z for z in all_contributors if z.state == "active"]
+        contributors_invalidated = [z for z in all_contributors if z.state == "invalidated"]
 
+        # 2) agrégation SÉPARÉE pour éviter la fusion actives/invalidées
+        agg_active = self.aggregator.aggregate(contributors_active)
+        agg_invalidated = self.aggregator.aggregate(contributors_invalidated)
 
+        # Combiner pour le rendu
+        agg_render = agg_active + agg_invalidated
 
+        print(f"   Aggregated: {len(agg_active)} active, {len(agg_invalidated)} invalidated")
 
-
-
-
-        # 3) produire des zones “agrégées” + rectangles
+        # 3) produire des zones "agrégées" + rectangles
         rectangles = 0
         for i, az in enumerate(agg_render):
             if rectangles >= self.max_rectangles:
@@ -157,19 +155,17 @@ class Indicator(IndicatorBase):
 
             t_start = min(z.t_start for z in contributors)
 
-            # règle: zone agrégée valide tant qu'il reste au moins un contributeur actif
+            # Déterminer l'état de l'agrégat
             if len(active_contrib) > 0:
                 agg_state = "active"
                 t_end = None
                 end_idx = None
             else:
                 agg_state = "invalidated"
-                # fin = dernière invalidation (max t_end) puisque plus aucun actif
+                # fin = dernière invalidation (max t_end)
                 t_end = max(z.t_end for z in invalid_contrib if z.t_end is not None)
-                end_idx = self._project_time_to_index(main_index, pd.to_datetime(t_end))
 
-            # mitigation
-
+            # mitigation (seulement des contributeurs actifs)
             mitigation_sum_active = sum(getattr(z, "mitigation_count", 0) for z in active_contrib)
             mitigation_score_sum_active = sum(getattr(z, "mitigation_score", 0.0) for z in active_contrib)
 
@@ -179,6 +175,7 @@ class Indicator(IndicatorBase):
             if t_end is not None:
                 end_idx = self._project_time_to_index(main_index, pd.to_datetime(t_end))
 
+            # Direction dominante
             bull = az.directions.get("bullish", 0) + az.directions.get("bull", 0)
             bear = az.directions.get("bearish", 0) + az.directions.get("bear", 0)
 
@@ -189,15 +186,26 @@ class Indicator(IndicatorBase):
             else:
                 dom_dir = "mixed"
 
-            if dom_dir == "bullish":
-                color = "#00b894"  # vert
-                label_dir = "OB Bull"
+            # Couleur selon ÉTAT (active/invalidated) puis direction
+            if agg_state == "invalidated":
+                color = "#9E9E9E"
+                alpha_override = 0.12
+                state_suffix = " (X)"
+            elif dom_dir == "bullish":
+                color = "#00b894"
+                alpha_override = None
+                state_suffix = ""
             elif dom_dir == "bearish":
-                color = "#d63031"  # rouge
-                label_dir = "OB Bear"
-            else:
-                color = "#6c5ce7"  # violet (mix)
-                label_dir = "OB Mix"
+                color = "#d63031"
+                alpha_override = None
+                state_suffix = ""
+            else:  # mixed
+                color = "#6c5ce7"
+                alpha_override = None
+                state_suffix = ""
+
+            # Direction courte
+            dir_short = dom_dir[:4].upper() if dom_dir else "MIX"
 
             # ZoneObject agrégée (legacy)
             zone_id = f"ob_mtf_{i}"
@@ -210,6 +218,10 @@ class Indicator(IndicatorBase):
                 type="order_block_mtf",
                 state=agg_state,
                 source_tf="MTF",
+                entry_candle_index=int(start_idx),
+                exit_candle_index=int(end_idx) if end_idx is not None else None,
+                mitigation_count=mitigation_sum_active,
+                mitigation_score=mitigation_score_sum_active,
                 metadata={
                     "score": az.score,
                     "tf_counts": az.tf_counts,
@@ -236,14 +248,15 @@ class Indicator(IndicatorBase):
                 alpha=float(alpha),
                 border_color=color,
                 border_width=1,
-                label=(f"OB-MTF s={az.score:.1f} mit={mitigation_sum_active}" if agg_state == "active" else f"OB-MTF (X) s={az.score:.1f}"),
-
+                label=f"#{i} {dir_short}{state_suffix} s={az.score:.1f} m={mitigation_sum_active}",
                 metadata={
+                    "zone_id": zone_id,  # ← ID dans metadata
                     "tf_counts": az.tf_counts,
                     "score": az.score,
                     "direction": dom_dir,
                     "state": agg_state,
                     "mitigation_count_active_sum": mitigation_sum_active,
+                    "contributors": [c.id for c in contributors],  # ← IDs des contributeurs
                 },
             )
             result.add_primitive(rect)

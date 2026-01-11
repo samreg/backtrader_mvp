@@ -304,7 +304,7 @@ class Indicator(IndicatorBase):
             if direction == 'bullish':
                 # OB bullish invalidé si prix TRAVERSE SOUS le low
                 # Utiliser low (pas close) pour être moins strict
-                if candle['low'] < zone.low:
+                if candle['close'] < zone.low:
                     zone.state = 'invalidated'
                     zone.t_end = time_col.iloc[i]
                     zone.exit_candle_index = i
@@ -315,7 +315,7 @@ class Indicator(IndicatorBase):
             elif direction == 'bearish':
                 # OB bearish invalidé si prix TRAVERSE AU-DESSUS du high
                 # Utiliser high (pas close)
-                if candle['high'] > zone.high:
+                if candle['close'] > zone.high:
                     zone.state = 'invalidated'
                     zone.t_end = time_col.iloc[i]
                     zone.exit_candle_index = i

@@ -1,7 +1,7 @@
 data:
   symbol: NAS100
   main_timeframe: M3
-  n_bars: 10000
+  n_bars: 20000
 
 indicators:
   - name: tracker_mtf_ob
