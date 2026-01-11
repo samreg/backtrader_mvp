@@ -564,41 +564,41 @@ def generate_html_content(config, candles_by_tf, indicator_results, indicators_c
     # =======================================================================
     # LEGACY SUPPORT - ZoneObject and SegmentObject (will be deprecated)
     # =======================================================================
-    
+
     # Prepare zones data for Canvas rendering
-    zones_data = []
+    #
     
-    for zone in all_zones:
+    #for zone in all_zones:
         # Determine color based on direction and state
-        direction = zone.metadata.get('direction', 'unknown')
+        #direction = zone.metadata.get('direction', 'unknown')
         
-        if zone.state == 'invalidated':
-            color = '#9E9E9E'  # Gray for invalidated
-            alpha = 0.1
-        elif direction == 'bullish':
+        #if zone.state == 'invalidated':
+            #color = '#9E9E9E'  # Gray for invalidated
+            #alpha = 0.1
+        #elif direction == 'bullish':
             # Green with transparency based on mitigation score
-            color = '#26a69a'
+            #color = '#26a69a'
             # Less mitigated = more opaque
-            alpha = max(0.15, 0.3 - (zone.mitigation_score * 0.05))
-        else:  # bearish
-            color = '#8B0000'  # Burgundy/Dark red
-            alpha = max(0.15, 0.3 - (zone.mitigation_score * 0.05))
+            #alpha = max(0.15, 0.3 - (zone.mitigation_score * 0.05))
+        #else:  # bearish
+            #color = '#8B0000'  # Burgundy/Dark red
+            #alpha = max(0.15, 0.3 - (zone.mitigation_score * 0.05))
         
-        zone_data = {
-            'id': zone.id,
-            'entry_index': zone.entry_candle_index,
-            'exit_index': zone.exit_candle_index,  # None if active
-            'price_low': zone.low,
-            'price_high': zone.high,
-            'color': color,
-            'alpha': alpha,
-            'direction': direction,
-            'state': zone.state,
-            'mitigation_count': zone.mitigation_count,
-            'mitigation_score': zone.mitigation_score
-        }
-        zones_data.append(zone_data)
-    
+        #zone_data = {
+        #    'id': zone.id,
+        #    'entry_index': zone.entry_candle_index,
+        #    'exit_index': zone.exit_candle_index,  # None if active
+        #    'price_low': zone.low,
+        #    'price_high': zone.high,
+        #    'color': color,
+        #    'alpha': alpha,
+        #    'direction': direction,
+        #    'state': zone.state,
+        #    'mitigation_count': zone.mitigation_count,
+        #    'mitigation_score': zone.mitigation_score
+        #}
+        #zones_data.append(zone_data)
+    zones_data = []
     print(f"   ✅ {len(zones_data)} LEGACY zones prepared (backwards compat)")
     
     # Prepare segments data for Canvas rendering (lines)

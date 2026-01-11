@@ -60,11 +60,12 @@ class Indicator(IndicatorBase):
         # Add to result (LEGACY objects for backwards compatibility)
         for zone in self.zone_registry.zones:
             result.add_object(zone)
-        
+
         # NEW: Convert zones to primitives
-        for zone in self.zone_registry.zones:
-            primitive = self._zone_to_primitive(zone, candles)
-            result.add_primitive(primitive)
+        #for zone in self.zone_registry.zones:
+        #    primitive = self._zone_to_primitive(zone, candles)
+        #    print(f"🟨 order_blocks.py: Creating primitive {primitive.id}, label='{primitive.label}'")
+        #    result.add_primitive(primitive)
         
         # Metadata
         result.add_meta('total_zones', len(self.zone_registry.zones))
@@ -225,8 +226,11 @@ class Indicator(IndicatorBase):
         """Crée un ZoneObject pour l'order block"""
         candle = candles.iloc[index]
         
-        zone_id = self.zone_registry.generate_id('ob')
-        
+        zone_id = self.zone_registry.generate_id(f'ob_{self.timeframe}')
+
+        # DEBUG
+        print(
+            f"🔷 Creating OB {zone_id}: index={index}, time={time_col.iloc[index]}, direction={direction}, low={candle['low']}, high={candle['high']}")
         # La zone va de la bougie OB jusqu'à invalidation
         t_start = time_col.iloc[index]
         t_end = None
@@ -252,24 +256,24 @@ class Indicator(IndicatorBase):
         )
         
         return zone
-    
-    def _check_mitigation(self, candles: pd.DataFrame, zone: ZoneObject, 
-                         ob_index: int) -> ZoneObject:
+
+    def _check_mitigation(self, candles: pd.DataFrame, zone: ZoneObject,
+                          ob_index: int) -> ZoneObject:
         """
         Vérifie mitigation (touches) et invalidation (traversée complète)
-        
+
         NOUVELLE LOGIQUE:
-        
+
         1. SKIP les N premières bougies (impulsion qui a créé l'OB)
         2. MITIGATION: Chaque touche de la zone incrémente le score
         3. INVALIDATION: Traversée complète termine l'affichage du bloc
-        
+
         Mitigation Score:
         - 0.0: Jamais touché (fresh zone)
         - 0.1-0.5: Peu mitigé (1-2 touches)
         - 0.5-1.0: Modérément mitigé (3-5 touches)
         - 1.0+: Très mitigé (>5 touches)
-        
+
         Invalidation:
         - OB bullish: Prix traverse SOUS le low
         - OB bearish: Prix traverse AU-DESSUS du high
@@ -277,52 +281,62 @@ class Indicator(IndicatorBase):
         time_col = self.get_time_column(candles)
         direction = zone.metadata.get('direction')
         imbalance_end = zone.metadata.get('imbalance_end', ob_index)
-        
+
         # Calculer l'index de début d'analyse
         # = imbalance_end + skip_impulse_candles
         start_check_index = imbalance_end + self.skip_impulse_candles
-        
+
+        # DEBUG
+        print(
+            f"  🔸 {zone.id} ({direction}): checking from i={start_check_index} to {len(candles)}, zone=[{zone.low:.2f}, {zone.high:.2f}]")
+
         # Parcourir les bougies APRÈS la période d'impulsion
         for i in range(start_check_index, len(candles)):
             candle = candles.iloc[i]
-            
+
             # === VÉRIFIER MITIGATION (touches) ===
             # Une bougie touche la zone si elle overlap avec la zone
             touches_zone = (candle['high'] >= zone.low and candle['low'] <= zone.high)
-            
+
             if touches_zone:
                 # Incrémenter le compteur de mitigation
                 zone.mitigation_count += 1
                 zone.last_mitigation_index = i
-                
+
                 # Calculer le score de mitigation
                 # Formule: score = mitigation_count * 0.2
                 # 1 touch = 0.2, 5 touches = 1.0, 10 touches = 2.0
                 zone.mitigation_score = zone.mitigation_count * 0.2
-            
+
             # === VÉRIFIER INVALIDATION (traversée) ===
             if direction == 'bullish':
-                # OB bullish invalidé si prix TRAVERSE SOUS le low
-                # Utiliser low (pas close) pour être moins strict
+                # OB bullish invalidé si prix CLÔTURE sous le low
                 if candle['close'] < zone.low:
+                    print(
+                        f"    ❌ {zone.id} INVALIDATED at i={i}, time={time_col.iloc[i]}, close={candle['close']:.2f} < low={zone.low:.2f}")
                     zone.state = 'invalidated'
                     zone.t_end = time_col.iloc[i]
                     zone.exit_candle_index = i
                     zone.metadata['invalidation_index'] = i
-                    zone.metadata['invalidation_type'] = 'full_break_down'
+                    zone.metadata['invalidation_type'] = 'close_below_low'
                     break
-            
+
             elif direction == 'bearish':
-                # OB bearish invalidé si prix TRAVERSE AU-DESSUS du high
-                # Utiliser high (pas close)
+                # OB bearish invalidé si prix CLÔTURE au-dessus du high
                 if candle['close'] > zone.high:
+                    print(
+                        f"    ❌ {zone.id} INVALIDATED at i={i}, time={time_col.iloc[i]}, close={candle['close']:.2f} > high={zone.high:.2f}")
                     zone.state = 'invalidated'
                     zone.t_end = time_col.iloc[i]
                     zone.exit_candle_index = i
                     zone.metadata['invalidation_index'] = i
-                    zone.metadata['invalidation_type'] = 'full_break_up'
+                    zone.metadata['invalidation_type'] = 'close_above_high'
                     break
-        
+
+        # DEBUG final
+        if zone.state == 'active':
+            print(f"    ✅ {zone.id} still ACTIVE, mitigation_count={zone.mitigation_count}")
+
         return zone
     
     def _filter_best_zones(self, zones: list) -> list:

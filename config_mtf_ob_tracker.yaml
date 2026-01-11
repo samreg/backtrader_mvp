@@ -1,14 +1,14 @@
 data:
   symbol: NAS100
   main_timeframe: M3
-  n_bars: 20000
+  n_bars: 1000
 
 indicators:
   - name: tracker_mtf_ob
     module: tracker_mtf_order_blocks
     panel: main
     params:
-      timeframes: [M5, M10]   # évite M10 si non supporté MT5
+      timeframes: [M3, M5, M10]
       keep_invalidated: true
 
       # Paramètres EXACTS du module order_blocks.py
@@ -16,7 +16,7 @@ indicators:
         swing_length: 10
         min_body_size: 2.0
         imbalance_bars: 3
-        max_zones: 15
+        max_zones: 35
         skip_impulse_candles: 2
 
       # Agrégation

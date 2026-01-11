@@ -106,6 +106,31 @@ class Indicator(IndicatorBase):
         main_candles = candles_by_tf[main_tf]
         main_index = pd.to_datetime(main_candles.index)
 
+        #------------------------------
+        print(f"\n📊 TIMEFRAME ALIGNMENT CHECK:")
+        print(f"Main TF ({main_tf}): {len(main_candles)} candles")
+        print(f"  → First: {main_index[0]}")
+        print(f"  → Last:  {main_index[-1]}")
+
+        for tf in self.timeframes:
+            if tf in candles_by_tf:
+                tf_df = candles_by_tf[tf]
+                tf_index = pd.to_datetime(tf_df.index)
+                print(f"\n{tf}: {len(tf_df)} candles")
+                print(f"  → First: {tf_index[0]}")
+                print(f"  → Last:  {tf_index[-1]}")
+
+                # Check overlap
+                if tf_index[0] > main_index[0]:
+                    delta = (tf_index[0] - main_index[0]).total_seconds() / 60
+                    print(f"  ⚠️ STARTS {delta:.0f} minutes AFTER main TF!")
+                if tf_index[-1] < main_index[-1]:
+                    delta = (main_index[-1] - tf_index[-1]).total_seconds() / 60
+                    print(f"  ⚠️ ENDS {delta:.0f} minutes BEFORE main TF!")
+
+        print("\n" + "=" * 60 + "\n")
+        #------------------------------
+
         # 1) calcul OB sur chaque TF et update tracker
         for tf in self.timeframes:
             if tf not in candles_by_tf:
@@ -143,126 +168,211 @@ class Indicator(IndicatorBase):
 
         print(f"   Aggregated: {len(agg_active)} active, {len(agg_invalidated)} invalidated")
 
-        # 3) produire des zones "agrégées" + rectangles
-        rectangles = 0
+        # ============================================================================
+        # NOUVELLE LOGIQUE DE RENDU : 3 COUCHES
+        # ============================================================================
+
+        # Compteur de primitives
+        prim_count = 0
+
+        # ----------------------------------------------------------------------------
+        # ----------------------------------------------------------------------------
+        # COUCHE 1 : RENDRE TOUS LES OB INDIVIDUELS (M5, M10, ...)
+        # ----------------------------------------------------------------------------
+        for z in all_contributors:
+            if prim_count >= self.max_rectangles:
+                break
+
+            # TOUJOURS projeter via timestamp (pas via entry_candle_index)
+            # car entry_candle_index est l'index dans le TF source (M5/M10), pas dans main_tf (M3)
+            start_idx = self._project_time_to_index(main_index, z.t_start)
+            end_idx = self._project_time_to_index(main_index, z.t_end) if z.t_end else None
+
+            # DEBUG
+            print(
+                f"🔹 Rendering {z.id}: t_start={z.t_start}, projected_idx={start_idx} (was source_idx={z.entry_candle_index})")
+
+            # Direction
+            direction = z.metadata.get('direction', 'unknown')
+
+            # Couleur et alpha selon état et direction
+            if z.state == 'invalidated':
+                color = '#9E9E9E'  # Gris
+                alpha = 0.12
+                state_mark = ' (X)'
+            elif direction == 'bullish':
+                color = '#00b894'  # Vert
+                alpha = 0.22
+                state_mark = ''
+            elif direction == 'bearish':
+                color = '#d63031'  # Rouge
+                alpha = 0.22
+                state_mark = ''
+            else:
+                color = '#6c5ce7'  # Violet
+                alpha = 0.18
+                state_mark = ''
+
+            # Label compact : TF + mitigation
+            tf_short = z.source_tf if z.source_tf else '??'
+            label = f"{tf_short} {direction[:4].upper()}{state_mark} m={z.mitigation_count}"
+
+            # Primitive OB individuel
+            rect = RectanglePrimitive(
+                id=f"rect_ob_{z.id}",
+                time_start_index=int(start_idx),
+                time_end_index=int(end_idx) if end_idx is not None else None,
+                price_low=float(z.low),
+                price_high=float(z.high),
+                color=color,
+                alpha=float(alpha),
+                border_color=color,
+                border_width=1,
+                label=label,
+                layer=0,  # Couche base
+                metadata={
+                    'type': 'individual_ob',
+                    'zone_id': z.id,
+                    'tf': z.source_tf,
+                    'direction': direction,
+                    'state': z.state,
+                    'mitigation_count': z.mitigation_count,
+                },
+            )
+            print(f"🟦 tracker COUCHE 1: Creating primitive {rect.id}, label='{rect.label}'")
+
+            result.add_primitive(rect)
+            prim_count += 1
+
+            # Ajouter le ZoneObject (legacy)
+            result.add_object(z)
+
+        # ----------------------------------------------------------------------------
+        # COUCHE 2 : RENDRE LES ZONES AGRÉGÉES (OVERLAY GRIS)
+        # ----------------------------------------------------------------------------
         for i, az in enumerate(agg_render):
-            if rectangles >= self.max_rectangles:
+            if prim_count >= self.max_rectangles:
                 break
 
             contributors = az.contributors
             active_contrib = [z for z in contributors if z.state == "active"]
             invalid_contrib = [z for z in contributors if z.state == "invalidated"]
 
-            t_start = min(z.t_start for z in contributors)
+            # Ne rendre que les agrégats avec ≥2 contributeurs
+            if len(contributors) < 2:
+                continue
 
-            # Déterminer l'état de l'agrégat
-            if len(active_contrib) > 0:
+            # État de l'agrégat
+            if len(active_contrib) >= 1:
                 agg_state = "active"
                 t_end = None
                 end_idx = None
             else:
                 agg_state = "invalidated"
-                # fin = dernière invalidation (max t_end)
-                t_end = max(z.t_end for z in invalid_contrib if z.t_end is not None)
+                # Ne pas afficher les agrégats invalidés (tous contributeurs morts)
+                continue
 
-            # mitigation (seulement des contributeurs actifs)
+            # Timestamps
+            t_start = min(z.t_start for z in contributors)
+            start_idx = self._project_time_to_index(main_index, pd.to_datetime(t_start))
+
+            # Mitigation totale (sum des actifs)
             mitigation_sum_active = sum(getattr(z, "mitigation_count", 0) for z in active_contrib)
             mitigation_score_sum_active = sum(getattr(z, "mitigation_score", 0.0) for z in active_contrib)
-
-            # projection sur main timeframe (indices)
-            start_idx = self._project_time_to_index(main_index, pd.to_datetime(t_start))
-            end_idx = None
-            if t_end is not None:
-                end_idx = self._project_time_to_index(main_index, pd.to_datetime(t_end))
 
             # Direction dominante
             bull = az.directions.get("bullish", 0) + az.directions.get("bull", 0)
             bear = az.directions.get("bearish", 0) + az.directions.get("bear", 0)
 
             if bull > bear:
-                dom_dir = "bullish"
+                dom_dir = "BULL"
             elif bear > bull:
-                dom_dir = "bearish"
+                dom_dir = "BEAR"
             else:
-                dom_dir = "mixed"
+                dom_dir = "MIX"
 
-            # Couleur selon ÉTAT (active/invalidated) puis direction
-            if agg_state == "invalidated":
-                color = "#9E9E9E"
-                alpha_override = 0.12
-                state_suffix = " (X)"
-            elif dom_dir == "bullish":
-                color = "#00b894"
-                alpha_override = None
-                state_suffix = ""
-            elif dom_dir == "bearish":
-                color = "#d63031"
-                alpha_override = None
-                state_suffix = ""
-            else:  # mixed
-                color = "#6c5ce7"
-                alpha_override = None
-                state_suffix = ""
+            # Couleur agrégat : GRIS semi-transparent (overlay)
+            agg_color = '#A0A0A0'
+            agg_alpha = 0.08  # Très transparent
 
-            # Direction courte
-            dir_short = dom_dir[:4].upper() if dom_dir else "MIX"
+            # Label agrégat
+            n_active = len(active_contrib)
+            n_invalid = len(invalid_contrib)
+            label_agg = f"AGG#{i} x{n_active}"
+            if n_invalid > 0:
+                label_agg += f" ({n_invalid}X)"
+            label_agg += f"                                      AGG {dom_dir} m={mitigation_sum_active}"
 
-            # ZoneObject agrégée (legacy)
-            zone_id = f"ob_mtf_{i}"
+            # ZoneObject agrégé (legacy)
+            zone_id = f"ob_mtf_agg_{i}"
             zobj = ZoneObject(
                 id=zone_id,
                 t_start=pd.to_datetime(t_start),
-                t_end=pd.to_datetime(t_end) if t_end else None,
+                t_end=None,  # Agrégat actif n'a pas de fin
                 low=float(az.low),
                 high=float(az.high),
-                type="order_block_mtf",
+                type="order_block_aggregated",
                 state=agg_state,
                 source_tf="MTF",
                 entry_candle_index=int(start_idx),
-                exit_candle_index=int(end_idx) if end_idx is not None else None,
+                exit_candle_index=None,
                 mitigation_count=mitigation_sum_active,
                 mitigation_score=mitigation_score_sum_active,
                 metadata={
                     "score": az.score,
                     "tf_counts": az.tf_counts,
-                    "n_sources": az.metadata.get("n_sources"),
+                    "n_contributors_active": n_active,
+                    "n_contributors_invalidated": n_invalid,
                     "direction": dom_dir,
-                    "direction_counts": az.directions,
-                    "mitigation_count_active_sum": mitigation_sum_active,
-                    "mitigation_score_active_sum": mitigation_score_sum_active,
-                    "contributors_active": len(active_contrib),
-                    "contributors_invalidated": len(invalid_contrib),
+                    "contributors_ids": [c.id for c in contributors],
                 },
             )
             result.add_object(zobj)
 
-            # RectanglePrimitive (rendu)
-            alpha = min(0.85, self.alpha_base + self.alpha_per_score * float(az.score))
-            rect = RectanglePrimitive(
+            # Primitive agrégat (overlay gris)
+            rect_agg = RectanglePrimitive(
                 id=f"rect_{zone_id}",
                 time_start_index=int(start_idx),
-                time_end_index=None if end_idx is None else int(end_idx),
+                time_end_index=None,
                 price_low=float(az.low),
                 price_high=float(az.high),
-                color=color,
-                alpha=float(alpha),
-                border_color=color,
-                border_width=1,
-                label=f"#{i} {dir_short}{state_suffix} s={az.score:.1f} m={mitigation_sum_active}",
+                color=agg_color,
+                alpha=float(agg_alpha),
+                border_color='#FFFFFF',
+                border_width=3,  # Bordure plus épaisse
+                label=label_agg,
+                layer=1,  # Couche supérieure (overlay)
                 metadata={
-                    "zone_id": zone_id,  # ← ID dans metadata
-                    "tf_counts": az.tf_counts,
-                    "score": az.score,
-                    "direction": dom_dir,
-                    "state": agg_state,
-                    "mitigation_count_active_sum": mitigation_sum_active,
-                    "contributors": [c.id for c in contributors],  # ← IDs des contributeurs
+                    'type': 'aggregated_zone',
+                    'zone_id': zone_id,
+                    'tf_counts': az.tf_counts,
+                    'score': az.score,
+                    'direction': dom_dir,
+                    'state': agg_state,
+                    'n_contributors_active': n_active,
+                    'n_contributors_invalidated': n_invalid,
+                    'contributors_ids': [c.id for c in contributors],
                 },
             )
-            result.add_primitive(rect)
+            print(f"🟩 tracker COUCHE 2: Creating primitive {rect_agg.id}, label='{rect_agg.label}'")
 
-            rectangles += 1
+            result.add_primitive(rect_agg)
 
-        result.add_meta("aggregated_zones", len(agg_render))
-        result.add_meta("rectangles", rectangles)
+            # DEBUG détaillé pour rectangles gris
+            if z.state == 'invalidated':
+                print(f"  🔴 INVALIDATED OB: {z.id}")
+                print(f"     start_idx={start_idx}, end_idx={end_idx}")
+                print(f"     t_start={z.t_start}, t_end={z.t_end}")
+                print(f"     price=[{z.low:.2f}, {z.high:.2f}]")
+                print(f"     label='{label}'")
+
+            prim_count += 1
+
+        # Metadata
+        result.add_meta("total_individual_obs", len(all_contributors))
+        result.add_meta("active_individual_obs", len(contributors_active))
+        result.add_meta("invalidated_individual_obs", len(contributors_invalidated))
+        result.add_meta("aggregated_zones", len([z for z in agg_render if len(z.contributors) >= 2]))
+        result.add_meta("total_primitives", prim_count)
+
         return result
